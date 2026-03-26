@@ -45,7 +45,47 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 BASE_DIR = Path(__file__).parent
-SKILL_DIR = BASE_DIR.parent / "skills" / "pptx-reviewer"
+
+
+def _resolve_skill_dir() -> Path:
+    """スキルフォルダのパスを解決する。
+
+    優先順位:
+    1. 環境変数 SKILL_DIR（明示指定）
+    2. Codex CLI の標準パス  : %USERPROFILE%\\.codex\\skills\\pptx-review-text
+    3. Claude Code の標準パス: %USERPROFILE%\\.claude\\skills\\pptx-reviewer
+    4. このファイルの相対パス : ../skills/pptx-reviewer（開発時のデフォルト）
+    """
+    # 1. 環境変数
+    env_val = os.getenv("SKILL_DIR", "").strip()
+    if env_val:
+        p = Path(env_val)
+        if p.exists():
+            logger.info("SKILL_DIR (env): %s", p)
+            return p
+        logger.warning("SKILL_DIR env で指定されたパスが見つかりません: %s", p)
+
+    home = Path.home()
+
+    # 2. Codex CLI 標準パス
+    codex_path = home / ".codex" / "skills" / "pptx-review-text"
+    if codex_path.exists():
+        logger.info("SKILL_DIR (Codex CLI): %s", codex_path)
+        return codex_path
+
+    # 3. Claude Code 標準パス
+    claude_path = home / ".claude" / "skills" / "pptx-reviewer"
+    if claude_path.exists():
+        logger.info("SKILL_DIR (Claude Code): %s", claude_path)
+        return claude_path
+
+    # 4. 相対パス（開発時フォールバック）
+    relative = BASE_DIR.parent / "skills" / "pptx-reviewer"
+    logger.info("SKILL_DIR (relative fallback): %s", relative)
+    return relative
+
+
+SKILL_DIR = _resolve_skill_dir()
 EXTRACT_SCRIPT = SKILL_DIR / "scripts" / "extract_pptx.py"
 TERMINOLOGY_SCRIPT = SKILL_DIR / "scripts" / "check_terminology.py"
 UPLOAD_DIR = BASE_DIR / "uploads"
