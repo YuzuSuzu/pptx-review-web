@@ -24,6 +24,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -382,13 +384,14 @@ def debug_info():
 
     # 用語リスト読み込み
     terminology_path = SKILL_DIR / "references" / "terminology.json"
-    try:
-        with open(terminology_path, encoding="utf-8") as f:
-            terminology = json.load(f)
-        terms = terminology.get("terms", [])
-    except Exception as e:
-        terms = []
-        terminology = {"error": str(e)}
+    with _terminology_lock:
+        try:
+            with open(terminology_path, encoding="utf-8") as f:
+                terminology = json.load(f)
+            terms = terminology.get("terms", [])
+        except Exception as e:
+            terms = []
+            terminology = {"error": str(e)}
 
     info = {
         "ai_provider": provider,
@@ -427,13 +430,17 @@ def debug_info():
 
 TERMINOLOGY_PATH = SKILL_DIR / "references" / "terminology.json"
 
+# terminology.json の並行読み書きを保護するロック
+_terminology_lock = threading.Lock()
+
 
 def _load_terminology() -> dict:
-    try:
-        with open(TERMINOLOGY_PATH, encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {"version": "1.0", "terms": []}
+    with _terminology_lock:
+        try:
+            with open(TERMINOLOGY_PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {"version": "1.0", "terms": []}
 
 
 @app.route("/api/terminology", methods=["GET"])
@@ -458,20 +465,27 @@ def save_terminology():
         if not isinstance(t.get("variants", []), list):
             return jsonify({"error": f"terms[{i}].variants はリストである必要があります。"}), 400
 
-    existing = _load_terminology()
-    existing["terms"] = [
-        {
-            "correct": t["correct"].strip(),
-            "variants": [v.strip() for v in t.get("variants", []) if str(v).strip()],
-            "category": t.get("category", "").strip(),
-            "notes": t.get("notes", "").strip(),
-        }
-        for t in terms
-    ]
-    existing["last_updated"] = date.today().isoformat()
+    with _terminology_lock:
+        try:
+            with open(TERMINOLOGY_PATH, encoding="utf-8") as f:
+                existing = json.load(f)
+        except FileNotFoundError:
+            existing = {"version": "1.0", "terms": []}
 
-    with open(TERMINOLOGY_PATH, "w", encoding="utf-8") as f:
-        json.dump(existing, f, ensure_ascii=False, indent=2)
+        existing["terms"] = [
+            {
+                "correct": t["correct"].strip(),
+                "variants": [v.strip() for v in t.get("variants", []) if str(v).strip()],
+                "category": t.get("category", "").strip(),
+                "notes": t.get("notes", "").strip(),
+            }
+            for t in terms
+        ]
+        existing["last_updated"] = date.today().isoformat()
+
+        with open(TERMINOLOGY_PATH, "w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False, indent=2)
+
     logger.info("用語リスト保存: %d語", len(existing["terms"]))
     return jsonify({"ok": True, "term_count": len(existing["terms"])})
 
@@ -511,19 +525,12 @@ def review():
         report_md = call_ai_review(prompt)
 
         # --- レポートをPPTXと同じ場所に保存（uploads/直下） ---
+        # uuid で一意なファイル名を生成（並行リクエストでの上書きを防止）
         stem = Path(file.filename).stem
         today_str = date.today().strftime("%Y%m%d")
-        report_filename = f"{today_str}_{stem}.md"
+        uid = uuid.uuid4().hex[:8]
+        report_filename = f"{today_str}_{stem}_{uid}.md"
         report_path = UPLOAD_DIR / report_filename
-        if report_path.exists():
-            i = 1
-            while True:
-                candidate = UPLOAD_DIR / f"{today_str}_{stem}_{i:02d}.md"
-                if not candidate.exists():
-                    report_path = candidate
-                    report_filename = candidate.name
-                    break
-                i += 1
         report_path.write_text(report_md, encoding="utf-8")
         logger.info("レポート保存: %s", report_path)
 
@@ -578,8 +585,9 @@ if __name__ == "__main__":
 
     try:
         from waitress import serve
-        logger.info("waitress でサーバー起動 (port=%d)", port)
-        serve(app, host="0.0.0.0", port=port)
+        threads = int(os.getenv("WAITRESS_THREADS", 8))
+        logger.info("waitress でサーバー起動 (port=%d, threads=%d)", port, threads)
+        serve(app, host="0.0.0.0", port=port, threads=threads)
     except ImportError:
         logger.info("Flask 開発サーバーで起動 (port=%d, debug=%s)", port, debug)
         app.run(host="0.0.0.0", port=port, debug=debug)

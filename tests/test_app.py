@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from unittest.mock import patch
 
@@ -391,7 +392,79 @@ class TestTerminologyAPI:
 
 
 # -----------------------------------------------------------------
-# 6. 用語チェック単体テスト
+# 7. 並行アクセステスト
+# -----------------------------------------------------------------
+class TestConcurrency:
+    def test_concurrent_reviews_unique_filenames(self, pptx_path):
+        """複数の同時レビューリクエストでレポートファイル名が重複しないことを確認。"""
+        results = []
+
+        def do_review():
+            app.config["TESTING"] = True
+            with app.test_client() as c:
+                with open(pptx_path, "rb") as f:
+                    res = c.post(
+                        "/review",
+                        data={"pptx_file": (f, "test.pptx")},
+                        content_type="multipart/form-data",
+                    )
+                return json.loads(res.data)
+
+        # patch はメインスレッドで一括適用（スレッド間の競合を避けるため）
+        with patch("app.call_ai_review", return_value=MOCK_REPORT):
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = [executor.submit(do_review) for _ in range(3)]
+                for future in as_completed(futures):
+                    results.append(future.result())
+
+        filenames = [r["report_filename"] for r in results if "report_filename" in r]
+        assert len(filenames) == 3, f"全リクエストが成功するはず: {results}"
+        assert len(set(filenames)) == 3, f"ファイル名が重複しています: {filenames}"
+
+        # クリーンアップ
+        for name in filenames:
+            p = flask_app_module.UPLOAD_DIR / name
+            if p.exists():
+                p.unlink()
+
+    def test_concurrent_terminology_save_no_corruption(self, client):
+        """複数の同時 terminology 保存でデータが壊れないことを確認。"""
+        res = client.get("/api/terminology")
+        original = json.loads(res.data)
+
+        terms_a = original["terms"] + [{"correct": "並行テストA", "variants": ["テストA"], "category": "テスト", "notes": ""}]
+        terms_b = original["terms"] + [{"correct": "並行テストB", "variants": ["テストB"], "category": "テスト", "notes": ""}]
+
+        outcomes = []
+
+        def save(terms):
+            app.config["TESTING"] = True
+            with app.test_client() as c:
+                res = c.post(
+                    "/api/terminology",
+                    data=json.dumps({"terms": terms}),
+                    content_type="application/json",
+                )
+                return json.loads(res.data)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(save, terms_a), executor.submit(save, terms_b)]
+            for future in as_completed(futures):
+                outcomes.append(future.result())
+
+        # 両方のリクエストが 200 で完了し、JSON が壊れていないこと
+        assert all(r.get("ok") is True for r in outcomes), f"保存失敗: {outcomes}"
+
+        # 元に戻す
+        client.post(
+            "/api/terminology",
+            data=json.dumps({"terms": original["terms"]}),
+            content_type="application/json",
+        )
+
+
+# -----------------------------------------------------------------
+# 8. 用語チェック単体テスト
 # -----------------------------------------------------------------
 class TestTerminologyDetection:
     def test_detects_server_variant(self, pptx_path):
