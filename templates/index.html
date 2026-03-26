@@ -273,6 +273,9 @@
       </div>
     </div>
 
+    <!-- 編集ロック中の通知 -->
+    <div id="lock-banner" class="alert alert-error" style="display:none;"></div>
+
     <!-- 保存成功 / エラー通知 -->
     <div id="term-alert" class="alert"></div>
 
@@ -454,24 +457,96 @@ function renderViewTable(terms) {
 }
 
 // ================================================================
-//  用語リスト — 編集モード
+//  用語リスト — 編集ロック
 // ================================================================
 const editBtn    = document.getElementById('edit-btn');
 const saveBtn    = document.getElementById('save-btn');
 const cancelBtn  = document.getElementById('cancel-btn');
 const addRowBtn  = document.getElementById('add-row-btn');
 const termAlert  = document.getElementById('term-alert');
+const lockBanner = document.getElementById('lock-banner');
 
-editBtn.addEventListener('click', () => {
+let editLockToken = null;   // 自分が保持するロックトークン
+let lockPollTimer = null;   // ポーリング用タイマー
+
+async function acquireEditLock() {
+  try {
+    const res  = await fetch('/api/terminology/lock', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      editLockToken = data.token;
+      return true;
+    } else {
+      showTermAlert('error', '🔒 ' + data.message);
+      return false;
+    }
+  } catch (e) {
+    showTermAlert('error', 'ロック取得エラー: ' + e.message);
+    return false;
+  }
+}
+
+async function releaseEditLock() {
+  if (!editLockToken) return;
+  try {
+    await fetch('/api/terminology/lock', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: editLockToken }),
+    });
+  } catch (_) { /* サイレント */ }
+  editLockToken = null;
+}
+
+function startLockPolling() {
+  if (lockPollTimer) return;
+  lockPollTimer = setInterval(checkLockStatus, 5000);
+}
+
+function stopLockPolling() {
+  if (lockPollTimer) { clearInterval(lockPollTimer); lockPollTimer = null; }
+}
+
+async function checkLockStatus() {
+  // 自分が編集中の場合はポーリング不要
+  if (editLockToken) return;
+  try {
+    const res  = await fetch('/api/terminology/lock');
+    const data = await res.json();
+    if (data.locked) {
+      const m = Math.floor(data.remaining_sec / 60);
+      const s = data.remaining_sec % 60;
+      lockBanner.textContent = `🔒 現在他のユーザーが編集中です（あと約 ${m} 分 ${s} 秒で自動解除）`;
+      lockBanner.style.display = 'block';
+      editBtn.disabled = true;
+      editBtn.title    = '他のユーザーが編集中のため操作できません';
+    } else {
+      lockBanner.style.display = 'none';
+      editBtn.disabled = false;
+      editBtn.title    = '';
+    }
+  } catch (_) { /* サイレント */ }
+}
+
+// ================================================================
+//  用語リスト — 編集モード
+// ================================================================
+editBtn.addEventListener('click', async () => {
+  const acquired = await acquireEditLock();
+  if (!acquired) return;
+  stopLockPolling();                          // 編集中はポーリング停止
+  lockBanner.style.display = 'none';
   editingTerms = JSON.parse(JSON.stringify(originalTerms));
   renderEditTable(editingTerms);
   switchMode('edit');
 });
 
-cancelBtn.addEventListener('click', () => {
+cancelBtn.addEventListener('click', async () => {
+  await releaseEditLock();
   editingTerms = [];
   switchMode('view');
   hideTermAlert();
+  startLockPolling();                         // 表示モードに戻ったらポーリング再開
 });
 
 addRowBtn.addEventListener('click', () => {
@@ -501,9 +576,11 @@ saveBtn.addEventListener('click', async () => {
     originalTerms = JSON.parse(JSON.stringify(terms));
     renderViewTable(originalTerms);
     updateCountBadge(originalTerms.length);
+    await releaseEditLock();                  // 保存成功後にロック解除
     switchMode('view');
     showTermAlert('success', `保存しました（${data.term_count} 語）`);
     setTimeout(hideTermAlert, 3000);
+    startLockPolling();                       // 表示モードに戻ったらポーリング再開
   } catch (e) {
     showTermAlert('error', '通信エラー: ' + e.message);
   } finally {
@@ -610,6 +687,8 @@ function esc(s) {
 //  初期化
 // ================================================================
 loadTerminology();
+checkLockStatus();   // 初回即時確認
+startLockPolling();  // 5秒ごとにロック状態を確認
 </script>
 </body>
 </html>

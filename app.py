@@ -433,6 +433,81 @@ TERMINOLOGY_PATH = SKILL_DIR / "references" / "terminology.json"
 # terminology.json の並行読み書きを保護するロック
 _terminology_lock = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# 用語編集ロック（悲観的ロック）
+# ---------------------------------------------------------------------------
+import datetime
+
+_EDIT_LOCK_TIMEOUT_SEC = 10 * 60  # 10分で自動解除
+
+_edit_lock_state: dict = {
+    "token": None,       # ロック保持者のトークン（None = 未ロック）
+    "locked_at": None,   # ロック取得時刻（datetime）
+}
+_edit_lock_mutex = threading.Lock()  # _edit_lock_state 自体を保護するロック
+
+
+def _edit_lock_is_expired() -> bool:
+    """ロックが存在し、かつタイムアウト済みかどうかを返す（呼び出し前に _edit_lock_mutex を取得すること）。"""
+    if _edit_lock_state["locked_at"] is None:
+        return False
+    elapsed = (datetime.datetime.now() - _edit_lock_state["locked_at"]).total_seconds()
+    return elapsed >= _EDIT_LOCK_TIMEOUT_SEC
+
+
+@app.route("/api/terminology/lock", methods=["GET"])
+def get_edit_lock():
+    """編集ロック状態を返す。"""
+    with _edit_lock_mutex:
+        if _edit_lock_state["token"] is None or _edit_lock_is_expired():
+            # 期限切れなら自動解除
+            _edit_lock_state["token"] = None
+            _edit_lock_state["locked_at"] = None
+            return jsonify({"locked": False})
+        elapsed = (datetime.datetime.now() - _edit_lock_state["locked_at"]).total_seconds()
+        remaining = max(0, int(_EDIT_LOCK_TIMEOUT_SEC - elapsed))
+        return jsonify({"locked": True, "remaining_sec": remaining})
+
+
+@app.route("/api/terminology/lock", methods=["POST"])
+def acquire_edit_lock():
+    """編集ロックを取得する。成功時はトークンを返す。"""
+    with _edit_lock_mutex:
+        # 期限切れロックは自動解除
+        if _edit_lock_is_expired():
+            _edit_lock_state["token"] = None
+            _edit_lock_state["locked_at"] = None
+
+        if _edit_lock_state["token"] is not None:
+            elapsed = (datetime.datetime.now() - _edit_lock_state["locked_at"]).total_seconds()
+            remaining = max(0, int(_EDIT_LOCK_TIMEOUT_SEC - elapsed))
+            return jsonify({
+                "ok": False,
+                "message": f"現在他のユーザーが編集中です（あと約 {remaining // 60} 分 {remaining % 60} 秒で自動解除）",
+            }), 409
+
+        token = uuid.uuid4().hex
+        _edit_lock_state["token"] = token
+        _edit_lock_state["locked_at"] = datetime.datetime.now()
+        logger.info("用語編集ロック取得 (token=%s...)", token[:8])
+        return jsonify({"ok": True, "token": token})
+
+
+@app.route("/api/terminology/lock", methods=["DELETE"])
+def release_edit_lock():
+    """編集ロックを解除する。token が一致する場合のみ解除。"""
+    body = request.get_json(silent=True) or {}
+    token = body.get("token", "")
+    with _edit_lock_mutex:
+        if _edit_lock_state["token"] is None:
+            return jsonify({"ok": True, "message": "すでに解除済みです"})
+        if _edit_lock_state["token"] != token:
+            return jsonify({"ok": False, "message": "トークンが一致しません"}), 403
+        _edit_lock_state["token"] = None
+        _edit_lock_state["locked_at"] = None
+        logger.info("用語編集ロック解除 (token=%s...)", token[:8])
+        return jsonify({"ok": True})
+
 
 def _load_terminology() -> dict:
     with _terminology_lock:

@@ -392,7 +392,83 @@ class TestTerminologyAPI:
 
 
 # -----------------------------------------------------------------
-# 7. 並行アクセステスト
+# 7. 用語編集ロック API
+# -----------------------------------------------------------------
+class TestEditLock:
+    def _release_all(self, client):
+        """テスト前後のロック残存を掃除する（token 不明でも強制解除）。"""
+        import app as m
+        with m._edit_lock_mutex:
+            m._edit_lock_state["token"] = None
+            m._edit_lock_state["locked_at"] = None
+
+    def test_get_lock_initially_unlocked(self, client):
+        self._release_all(client)
+        res = client.get('/api/terminology/lock')
+        assert res.status_code == 200
+        assert json.loads(res.data)['locked'] is False
+
+    def test_acquire_lock_success(self, client):
+        self._release_all(client)
+        res = client.post('/api/terminology/lock')
+        data = json.loads(res.data)
+        assert res.status_code == 200
+        assert data['ok'] is True
+        assert 'token' in data
+        self._release_all(client)
+
+    def test_acquire_lock_twice_fails(self, client):
+        self._release_all(client)
+        res1 = client.post('/api/terminology/lock')
+        token = json.loads(res1.data)['token']
+        res2 = client.post('/api/terminology/lock')
+        assert res2.status_code == 409
+        assert json.loads(res2.data)['ok'] is False
+        self._release_all(client)
+
+    def test_get_lock_shows_locked(self, client):
+        self._release_all(client)
+        client.post('/api/terminology/lock')
+        res = client.get('/api/terminology/lock')
+        data = json.loads(res.data)
+        assert data['locked'] is True
+        assert 'remaining_sec' in data
+        self._release_all(client)
+
+    def test_release_lock_with_valid_token(self, client):
+        self._release_all(client)
+        res1 = client.post('/api/terminology/lock')
+        token = json.loads(res1.data)['token']
+        res2 = client.delete('/api/terminology/lock',
+                             data=json.dumps({'token': token}),
+                             content_type='application/json')
+        assert json.loads(res2.data)['ok'] is True
+        assert json.loads(client.get('/api/terminology/lock').data)['locked'] is False
+
+    def test_release_lock_with_wrong_token_fails(self, client):
+        self._release_all(client)
+        client.post('/api/terminology/lock')
+        res = client.delete('/api/terminology/lock',
+                            data=json.dumps({'token': 'wrong-token'}),
+                            content_type='application/json')
+        assert res.status_code == 403
+        self._release_all(client)
+
+    def test_lock_auto_expires(self, client):
+        """タイムアウト済みロックは GET で自動解除されることを確認。"""
+        import app as m
+        import datetime
+        self._release_all(client)
+        client.post('/api/terminology/lock')
+        # locked_at を過去に書き換えてタイムアウトをシミュレート
+        with m._edit_lock_mutex:
+            m._edit_lock_state["locked_at"] = datetime.datetime.now() - datetime.timedelta(seconds=m._EDIT_LOCK_TIMEOUT_SEC + 1)
+        res = client.get('/api/terminology/lock')
+        assert json.loads(res.data)['locked'] is False
+
+
+# -----------------------------------------------------------------
+# 8. 並行アクセステスト
 # -----------------------------------------------------------------
 class TestConcurrency:
     def test_concurrent_reviews_unique_filenames(self, pptx_path):
