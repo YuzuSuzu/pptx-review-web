@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPTX レビュアー</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1e3a5f;
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .02em; }
+    header .badge { background: #3b82f6; border-radius: 4px; font-size: .7rem; padding: 2px 8px; }
+
+    main { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+
+    /* ---- カード共通 ---- */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 28px 32px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      margin-bottom: 24px;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1e3a5f;
+      border-left: 4px solid #3b82f6;
+      padding-left: 10px;
+      margin-bottom: 20px;
+    }
+
+    /* ---- Upload ---- */
+    .drop-zone {
+      border: 2px dashed #93c5fd;
+      border-radius: 10px;
+      padding: 44px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+      background: #f8faff;
+      position: relative;
+    }
+    .drop-zone.drag-over { background: #dbeafe; border-color: #3b82f6; }
+    .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .drop-zone .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .drop-zone p { color: #6b7280; font-size: .95rem; }
+    .drop-zone p strong { color: #2563eb; }
+    #filename-display { margin-top: 10px; font-size: .875rem; color: #374151; font-weight: 600; }
+
+    .field-row { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+    .field-row label { font-size: .875rem; color: #374151; white-space: nowrap; }
+    .field-row input[type="text"] { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 12px; font-size: .9rem; outline: none; transition: border-color .15s; }
+    .field-row input[type="text"]:focus { border-color: #3b82f6; }
+    .hint { font-size: .78rem; color: #9ca3af; margin-top: 4px; }
+
+    .btn-primary {
+      display: block; width: 100%; margin-top: 24px; padding: 13px;
+      background: #1e3a5f; color: #fff; border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600; cursor: pointer;
+      transition: background .15s, transform .1s; letter-spacing: .04em;
+    }
+    .btn-primary:hover:not(:disabled) { background: #2563eb; }
+    .btn-primary:active:not(:disabled) { transform: scale(.98); }
+    .btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+
+    /* ---- Progress ---- */
+    #progress { display: none; margin-top: 28px; text-align: center; }
+    .spinner { display: inline-block; width: 36px; height: 36px; border: 4px solid #dbeafe; border-top-color: #3b82f6; border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #progress-msg { margin-top: 10px; font-size: .9rem; color: #4b5563; }
+
+    /* ---- Error / Info ---- */
+    .alert { display: none; margin-top: 16px; border-radius: 8px; padding: 14px 18px; font-size: .9rem; }
+    .alert-error { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+    .alert-success { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+
+    /* ---- Result ---- */
+    #result-section { display: none; margin-bottom: 24px; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .result-header h2 { font-size: 1rem; color: #1e3a5f; font-weight: 700; }
+    .result-meta { font-size: .8rem; color: #6b7280; }
+    .btn-download { padding: 7px 18px; background: #059669; color: #fff; border: none; border-radius: 6px; font-size: .85rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+    .btn-download:hover { background: #047857; }
+    #report-container { background: #fff; border-radius: 10px; padding: 32px 36px; box-shadow: 0 1px 4px rgba(0,0,0,.08); line-height: 1.75; font-size: .93rem; }
+    #report-container h1 { font-size: 1.4rem; border-bottom: 2px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 20px; color: #1e3a5f; }
+    #report-container h2 { font-size: 1.1rem; margin: 28px 0 12px; color: #1e40af; border-left: 4px solid #3b82f6; padding-left: 10px; }
+    #report-container h3 { font-size: .95rem; margin: 20px 0 8px; color: #374151; }
+    #report-container p { margin-bottom: 10px; }
+    #report-container table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .875rem; }
+    #report-container th { background: #1e3a5f; color: #fff; padding: 8px 12px; text-align: left; }
+    #report-container td { padding: 7px 12px; border-bottom: 1px solid #e5e7eb; }
+    #report-container tr:hover td { background: #f0f7ff; }
+    #report-container hr { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+    #report-container ol, #report-container ul { padding-left: 24px; margin-bottom: 10px; }
+    #report-container li { margin-bottom: 4px; }
+
+    /* ====================================================
+       用語カスタマイズリスト
+       ==================================================== */
+    .term-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .term-count-badge {
+      font-size: .8rem;
+      background: #dbeafe;
+      color: #1e40af;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .btn-icon {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 16px; border-radius: 6px; font-size: .85rem;
+      font-weight: 600; cursor: pointer; border: none; transition: background .15s;
+    }
+    .btn-edit   { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .btn-edit:hover { background: #e0f2fe; }
+    .btn-save   { background: #1e3a5f; color: #fff; }
+    .btn-save:hover { background: #2563eb; }
+    .btn-cancel { background: #f9fafb; color: #374151; border: 1px solid #d1d5db; }
+    .btn-cancel:hover { background: #f3f4f6; }
+    .btn-add-row { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; margin-top: 12px; }
+    .btn-add-row:hover { background: #dcfce7; }
+    .btn-del-row { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1rem; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+    .btn-del-row:hover { background: #fee2e2; }
+
+    /* ---- View mode table ---- */
+    #term-view-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    #term-view-table th {
+      background: #1e3a5f; color: #fff; padding: 9px 12px;
+      text-align: left; font-weight: 600;
+    }
+    #term-view-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    #term-view-table tr:hover td { background: #f8faff; }
+    #term-view-table .no-data td { text-align: center; color: #9ca3af; padding: 24px; }
+
+    /* バリアントタグ */
+    .variant-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .variant-tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #fef9c3; color: #854d0e;
+      border: 1px solid #fde68a;
+      border-radius: 4px; padding: 2px 8px; font-size: .8rem;
+    }
+    .variant-tag .del-variant {
+      background: none; border: none; color: #b45309;
+      cursor: pointer; font-size: .9rem; line-height: 1;
+      padding: 0 1px; display: none; /* 表示モードでは非表示 */
+    }
+
+    /* ---- Edit mode ---- */
+    #term-edit-body tr td { padding: 6px 8px; vertical-align: middle; }
+    .edit-input {
+      width: 100%; border: 1px solid #d1d5db; border-radius: 5px;
+      padding: 5px 8px; font-size: .85rem; outline: none;
+    }
+    .edit-input:focus { border-color: #3b82f6; }
+
+    /* バリアント編集エリア */
+    .variant-edit-area { display: flex; flex-direction: column; gap: 4px; }
+    .variant-tags-edit { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; min-height: 26px; }
+    .variant-tag-edit {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: #fef9c3; color: #854d0e;
+      border: 1px solid #fde68a;
+      border-radius: 4px; padding: 2px 6px; font-size: .8rem;
+    }
+    .variant-tag-edit .del-v {
+      background: none; border: none; color: #b45309;
+      cursor: pointer; font-size: .85rem; line-height: 1; padding: 0 1px;
+    }
+    .variant-add-row { display: flex; gap: 4px; }
+    .variant-add-input {
+      flex: 1; border: 1px solid #d1d5db; border-radius: 5px;
+      padding: 4px 7px; font-size: .82rem; outline: none; min-width: 0;
+    }
+    .variant-add-input:focus { border-color: #3b82f6; }
+    .btn-add-variant {
+      background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+      border-radius: 5px; padding: 4px 10px; cursor: pointer;
+      font-size: .82rem; white-space: nowrap;
+    }
+    .btn-add-variant:hover { background: #dbeafe; }
+
+    .edit-toolbar { display: flex; gap: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>📊</div>
+  <h1>PPTX レビュアー</h1>
+  <span class="badge">Claude AI</span>
+</header>
+
+<main>
+
+  <!-- ==================== アップロードカード ==================== -->
+  <div class="card">
+    <div class="card-title">📁 PowerPoint レビュー</div>
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="pptx-input" accept=".pptx" />
+      <div class="icon">📁</div>
+      <p><strong>クリックまたはドラッグ</strong>して .pptx を選択</p>
+      <div id="filename-display"></div>
+    </div>
+
+    <div class="field-row">
+      <label for="pages-input">対象ページ（任意）</label>
+      <input type="text" id="pages-input" placeholder="例: 1,3,5" />
+    </div>
+    <p class="hint">省略すると全スライドをレビューします。カンマ区切りで複数指定可能。</p>
+
+    <button class="btn-primary" id="review-btn" disabled>レビュー開始</button>
+  </div>
+
+  <!-- Progress -->
+  <div id="progress">
+    <div class="spinner"></div>
+    <p id="progress-msg">ファイルをアップロード中...</p>
+  </div>
+
+  <!-- Error -->
+  <div id="error-box" class="alert alert-error"></div>
+
+  <!-- Result -->
+  <div id="result-section">
+    <div class="result-header">
+      <h2>レビューレポート</h2>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <span class="result-meta" id="result-meta"></span>
+        <button class="btn-download" id="download-btn">Markdown を保存</button>
+      </div>
+    </div>
+    <div id="report-container"></div>
+  </div>
+
+  <!-- ==================== 用語カスタマイズリスト ==================== -->
+  <div class="card" id="term-card">
+    <div class="term-toolbar">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="card-title" style="margin-bottom:0;">📝 用語カスタマイズリスト</span>
+        <span class="term-count-badge" id="term-count-badge">読み込み中...</span>
+      </div>
+      <!-- 表示モードのボタン -->
+      <div id="view-toolbar">
+        <button class="btn-icon btn-edit" id="edit-btn">✏️ 編集</button>
+      </div>
+      <!-- 編集モードのボタン -->
+      <div id="edit-toolbar" style="display:none;" class="edit-toolbar">
+        <button class="btn-icon btn-cancel" id="cancel-btn">キャンセル</button>
+        <button class="btn-icon btn-save"   id="save-btn">💾 保存</button>
+      </div>
+    </div>
+
+    <!-- 保存成功 / エラー通知 -->
+    <div id="term-alert" class="alert"></div>
+
+    <!-- 表示モード -->
+    <div id="term-view">
+      <table id="term-view-table">
+        <thead>
+          <tr>
+            <th style="width:18%">正式表記</th>
+            <th style="width:32%">ゆれ（誤表記）</th>
+            <th style="width:14%">カテゴリ</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody id="term-view-body"></tbody>
+      </table>
+    </div>
+
+    <!-- 編集モード -->
+    <div id="term-edit" style="display:none;">
+      <table id="term-edit-table" style="width:100%;border-collapse:collapse;font-size:.87rem;">
+        <thead>
+          <tr style="background:#1e3a5f;color:#fff;">
+            <th style="padding:9px 10px;text-align:left;width:16%">正式表記 <span style="color:#f87171">*</span></th>
+            <th style="padding:9px 10px;text-align:left;width:34%">ゆれ（誤表記）<br><span style="font-weight:400;font-size:.75rem;opacity:.85">テキスト入力後 Enter または「追加」</span></th>
+            <th style="padding:9px 10px;text-align:left;width:14%">カテゴリ</th>
+            <th style="padding:9px 10px;text-align:left;">備考</th>
+            <th style="padding:9px 10px;width:40px;"></th>
+          </tr>
+        </thead>
+        <tbody id="term-edit-body"></tbody>
+      </table>
+      <button class="btn-icon btn-add-row" id="add-row-btn">＋ 行を追加</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ================================================================
+//  状態管理
+// ================================================================
+let selectedFile = null;
+let reportMarkdown = '';
+let reportFilename = 'review_report.md';
+let originalTerms = [];   // 編集キャンセル用
+let editingTerms  = [];   // 編集中データ
+
+// ================================================================
+//  アップロード UI
+// ================================================================
+const dropZone    = document.getElementById('drop-zone');
+const fileInput   = document.getElementById('pptx-input');
+const reviewBtn   = document.getElementById('review-btn');
+const progressEl  = document.getElementById('progress');
+const progressMsg = document.getElementById('progress-msg');
+const errorBox    = document.getElementById('error-box');
+const resultSec   = document.getElementById('result-section');
+const reportCont  = document.getElementById('report-container');
+const resultMeta  = document.getElementById('result-meta');
+const downloadBtn = document.getElementById('download-btn');
+const filenameDisp= document.getElementById('filename-display');
+
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) selectFile(fileInput.files[0]); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.toLowerCase().endsWith('.pptx')) selectFile(f);
+  else showUploadError('.pptx ファイルのみ対応しています。');
+});
+
+function selectFile(f) {
+  selectedFile = f;
+  filenameDisp.textContent = '📄 ' + f.name;
+  reviewBtn.disabled = false;
+  errorBox.style.display = 'none';
+  resultSec.style.display = 'none';
+}
+
+reviewBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  setLoading(true, 'ファイルをアップロード中...');
+  errorBox.style.display = 'none';
+  resultSec.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('pptx_file', selectedFile);
+  const pages = document.getElementById('pages-input').value.trim();
+  if (pages) formData.append('pages', pages);
+
+  const steps = [
+    [1000,  'テキストを抽出中...'],
+    [3000,  '用語チェック中...'],
+    [5000,  'Claude AI がレビュー分析中...（しばらくお待ちください）'],
+    [20000, 'レポートを生成中...'],
+  ];
+  const timers = steps.map(([d, m]) => setTimeout(() => { if (progressEl.style.display !== 'none') progressMsg.textContent = m; }, d));
+
+  try {
+    const res = await fetch('/review', { method: 'POST', body: formData });
+    timers.forEach(clearTimeout);
+    const data = await res.json();
+    if (!res.ok || data.error) { showUploadError(data.error || 'サーバーエラーが発生しました。'); return; }
+
+    reportMarkdown = data.report;
+    reportFilename = data.report_filename || 'review_report.md';
+    const totalSlides   = data.total_slides ?? '?';
+    const reviewedCount = (data.reviewed_slides || []).length;
+    resultMeta.textContent = `総スライド: ${totalSlides}枚 / レビュー対象: ${reviewedCount}枚`;
+    reportCont.innerHTML = marked.parse(reportMarkdown);
+    resultSec.style.display = 'block';
+    resultSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    timers.forEach(clearTimeout);
+    showUploadError('通信エラーが発生しました: ' + err.message);
+  } finally {
+    setLoading(false);
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  const blob = new Blob([reportMarkdown], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = reportFilename;
+  a.click(); URL.revokeObjectURL(a.href);
+});
+
+function setLoading(on, msg = '') {
+  reviewBtn.disabled = on;
+  progressEl.style.display = on ? 'block' : 'none';
+  if (msg) progressMsg.textContent = msg;
+}
+function showUploadError(msg) {
+  errorBox.textContent = '⚠ ' + msg;
+  errorBox.style.display = 'block';
+  setLoading(false);
+}
+
+// ================================================================
+//  用語リスト — 表示
+// ================================================================
+async function loadTerminology() {
+  try {
+    const res  = await fetch('/api/terminology');
+    const data = await res.json();
+    originalTerms = JSON.parse(JSON.stringify(data.terms || []));
+    renderViewTable(originalTerms);
+    updateCountBadge(originalTerms.length);
+  } catch (e) {
+    document.getElementById('term-view-body').innerHTML =
+      '<tr class="no-data"><td colspan="4">用語リストの読み込みに失敗しました。</td></tr>';
+  }
+}
+
+function updateCountBadge(n) {
+  document.getElementById('term-count-badge').textContent = n + ' 語';
+}
+
+function renderViewTable(terms) {
+  const tbody = document.getElementById('term-view-body');
+  if (terms.length === 0) {
+    tbody.innerHTML = '<tr class="no-data"><td colspan="4">用語が登録されていません。編集ボタンから追加してください。</td></tr>';
+    return;
+  }
+  tbody.innerHTML = terms.map(t => `
+    <tr>
+      <td><strong>${esc(t.correct)}</strong></td>
+      <td>
+        <div class="variant-tags">
+          ${(t.variants || []).map(v => `<span class="variant-tag">${esc(v)}</span>`).join('')}
+        </div>
+      </td>
+      <td>${esc(t.category || '')}</td>
+      <td>${esc(t.notes || '')}</td>
+    </tr>
+  `).join('');
+}
+
+// ================================================================
+//  用語リスト — 編集モード
+// ================================================================
+const editBtn    = document.getElementById('edit-btn');
+const saveBtn    = document.getElementById('save-btn');
+const cancelBtn  = document.getElementById('cancel-btn');
+const addRowBtn  = document.getElementById('add-row-btn');
+const termAlert  = document.getElementById('term-alert');
+
+editBtn.addEventListener('click', () => {
+  editingTerms = JSON.parse(JSON.stringify(originalTerms));
+  renderEditTable(editingTerms);
+  switchMode('edit');
+});
+
+cancelBtn.addEventListener('click', () => {
+  editingTerms = [];
+  switchMode('view');
+  hideTermAlert();
+});
+
+addRowBtn.addEventListener('click', () => {
+  appendEditRow({ correct: '', variants: [], category: '', notes: '' });
+});
+
+saveBtn.addEventListener('click', async () => {
+  const terms = collectEditData();
+  // 正式表記が空の行はエラー
+  const empty = terms.findIndex(t => !t.correct.trim());
+  if (empty !== -1) {
+    showTermAlert('error', `${empty + 1} 行目の「正式表記」が空です。入力してください。`);
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中...';
+  try {
+    const res  = await fetch('/api/terminology', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ terms }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) { showTermAlert('error', data.error || '保存に失敗しました。'); return; }
+
+    originalTerms = JSON.parse(JSON.stringify(terms));
+    renderViewTable(originalTerms);
+    updateCountBadge(originalTerms.length);
+    switchMode('view');
+    showTermAlert('success', `保存しました（${data.term_count} 語）`);
+    setTimeout(hideTermAlert, 3000);
+  } catch (e) {
+    showTermAlert('error', '通信エラー: ' + e.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '💾 保存';
+  }
+});
+
+function switchMode(mode) {
+  const isEdit = mode === 'edit';
+  document.getElementById('term-view').style.display   = isEdit ? 'none'  : 'block';
+  document.getElementById('term-edit').style.display   = isEdit ? 'block' : 'none';
+  document.getElementById('view-toolbar').style.display = isEdit ? 'none'  : 'flex';
+  document.getElementById('edit-toolbar').style.display = isEdit ? 'flex'  : 'none';
+}
+
+// ---- 編集テーブル描画 ----
+function renderEditTable(terms) {
+  const tbody = document.getElementById('term-edit-body');
+  tbody.innerHTML = '';
+  terms.forEach(t => appendEditRow(t));
+}
+
+function appendEditRow(t) {
+  const tbody = document.getElementById('term-edit-body');
+  const tr = document.createElement('tr');
+  tr.style.borderBottom = '1px solid #e5e7eb';
+
+  tr.innerHTML = `
+    <td><input class="edit-input f-correct" type="text" value="${esc(t.correct)}" placeholder="例: サーバ" /></td>
+    <td>
+      <div class="variant-edit-area">
+        <div class="variant-tags-edit"></div>
+        <div class="variant-add-row">
+          <input class="variant-add-input" type="text" placeholder="誤表記を入力して Enter" />
+          <button class="btn-add-variant">追加</button>
+        </div>
+      </div>
+    </td>
+    <td><input class="edit-input f-category" type="text" value="${esc(t.category || '')}" placeholder="例: IT用語" /></td>
+    <td><input class="edit-input f-notes"    type="text" value="${esc(t.notes    || '')}" placeholder="備考" /></td>
+    <td style="text-align:center;"><button class="btn-del-row" title="この行を削除">🗑</button></td>
+  `;
+
+  // バリアントを追加
+  const tagsEl = tr.querySelector('.variant-tags-edit');
+  (t.variants || []).forEach(v => addVariantTag(tagsEl, v));
+
+  // バリアント追加ボタン
+  const addInput = tr.querySelector('.variant-add-input');
+  const addVBtn  = tr.querySelector('.btn-add-variant');
+  const doAddVariant = () => {
+    const val = addInput.value.trim();
+    if (!val) return;
+    addVariantTag(tagsEl, val);
+    addInput.value = '';
+    addInput.focus();
+  };
+  addVBtn.addEventListener('click', doAddVariant);
+  addInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doAddVariant(); } });
+
+  // 行削除
+  tr.querySelector('.btn-del-row').addEventListener('click', () => tr.remove());
+
+  tbody.appendChild(tr);
+}
+
+function addVariantTag(container, text) {
+  const span = document.createElement('span');
+  span.className = 'variant-tag-edit';
+  span.dataset.value = text;
+  span.innerHTML = `${esc(text)}<button class="del-v" title="削除">×</button>`;
+  span.querySelector('.del-v').addEventListener('click', () => span.remove());
+  container.appendChild(span);
+}
+
+// ---- 編集データ収集 ----
+function collectEditData() {
+  const rows = document.querySelectorAll('#term-edit-body tr');
+  return Array.from(rows).map(tr => ({
+    correct:  tr.querySelector('.f-correct').value,
+    variants: Array.from(tr.querySelectorAll('.variant-tag-edit')).map(s => s.dataset.value),
+    category: tr.querySelector('.f-category').value,
+    notes:    tr.querySelector('.f-notes').value,
+  }));
+}
+
+// ---- アラート ----
+function showTermAlert(type, msg) {
+  termAlert.className = 'alert ' + (type === 'error' ? 'alert-error' : 'alert-success');
+  termAlert.textContent = (type === 'error' ? '⚠ ' : '✅ ') + msg;
+  termAlert.style.display = 'block';
+}
+function hideTermAlert() { termAlert.style.display = 'none'; }
+
+// ================================================================
+//  ユーティリティ
+// ================================================================
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ================================================================
+//  初期化
+// ================================================================
+loadTerminology();
+</script>
+</body>
+</html>
