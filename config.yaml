@@ -19,12 +19,22 @@ logging:
 teams:
   # 通知を有効にする場合は true に変更
   enabled: false
-  # Teams の Incoming Webhook URL
-  # 設定方法:
-  #   1. Teams を開き、通知を受け取りたいチャンネル（自分専用チャンネル等）を選択
-  #   2. チャンネル名の右クリックメニュー → 「コネクタ」→「Incoming Webhook」→「構成」
-  #   3. 名前を入力して「作成」→ 表示された URL をコピーして下記に貼り付け
+  # Webhook の種類を指定（下記のどちらかを選ぶ）
+  #   incoming_webhook : Teams の Incoming Webhook（IT ポリシーで禁止されている場合は使えない）
+  #   power_automate   : Power Automate の「HTTP 要求を受信したとき」トリガー（推奨）
+  webhook_type: "power_automate"
+  # Webhook URL（webhook_type に合わせた URL を貼り付ける）
   webhook_url: ""
+
+# =====================================================================
+# レビュー設定
+# =====================================================================
+review:
+  # 1 回の AI リクエストで処理するスライド枚数（デフォルト: 3）
+  # 多いほどスライド間の整合性チェック精度が上がるが、
+  # トークン上限（finish_reason=length）に達してエラーになる可能性が高まる。
+  # 環境変数 REVIEW_CHUNK_SIZE でも上書き可能。
+  chunk_size: 3
 
 # =====================================================================
 # API キー設定画面のパスワード保護
