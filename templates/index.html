@@ -27,7 +27,23 @@
     header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .02em; }
     header .badge { background: #3b82f6; border-radius: 4px; font-size: .7rem; padding: 2px 8px; }
 
-    main { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    main { max-width: 1280px; margin: 40px auto; padding: 0 40px; }
+
+    /* ==== タブナビゲーション ==== */
+    .tab-nav {
+      display: flex; gap: 0; margin-bottom: 24px;
+      border-bottom: 2px solid #d1d5db;
+    }
+    .tab-btn {
+      padding: 12px 24px; border: none; background: none;
+      font-size: .92rem; font-weight: 600; color: #6b7280;
+      cursor: pointer; border-bottom: 3px solid transparent;
+      margin-bottom: -2px; transition: color .15s, border-color .15s;
+    }
+    .tab-btn:hover { color: #1e3a5f; }
+    .tab-btn.active { color: #1e3a5f; border-bottom-color: #3b82f6; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
 
     /* ---- カード共通 ---- */
     .card {
@@ -98,7 +114,7 @@
     .result-meta { font-size: .8rem; color: #6b7280; }
     .btn-download { padding: 7px 18px; background: #059669; color: #fff; border: none; border-radius: 6px; font-size: .85rem; font-weight: 600; cursor: pointer; transition: background .15s; }
     .btn-download:hover { background: #047857; }
-    #report-container { background: #fff; border-radius: 10px; padding: 32px 36px; box-shadow: 0 1px 4px rgba(0,0,0,.08); line-height: 1.75; font-size: .93rem; }
+    #report-container { background: #fff; border-radius: 10px; padding: 32px 48px; max-width: 960px; margin: 0 auto; box-shadow: 0 1px 4px rgba(0,0,0,.08); line-height: 1.75; font-size: .93rem; }
     #report-container h1 { font-size: 1.4rem; border-bottom: 2px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 20px; color: #1e3a5f; }
     #report-container h2 { font-size: 1.1rem; margin: 28px 0 12px; color: #1e40af; border-left: 4px solid #3b82f6; padding-left: 10px; }
     #report-container h3 { font-size: .95rem; margin: 20px 0 8px; color: #374151; }
@@ -111,16 +127,14 @@
     #report-container ol, #report-container ul { padding-left: 24px; margin-bottom: 10px; }
     #report-container li { margin-bottom: 4px; }
 
-    /* ====================================================
-       用語カスタマイズリスト
-       ==================================================== */
-    .term-toolbar {
+    /* ==== 共通ボタン / テーブル ==== */
+    .list-toolbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 16px;
     }
-    .term-count-badge {
+    .count-badge {
       font-size: .8rem;
       background: #dbeafe;
       color: #1e40af;
@@ -144,15 +158,14 @@
     .btn-del-row { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1rem; padding: 2px 6px; border-radius: 4px; line-height: 1; }
     .btn-del-row:hover { background: #fee2e2; }
 
-    /* ---- View mode table ---- */
-    #term-view-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-    #term-view-table th {
+    .view-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    .view-table th {
       background: #1e3a5f; color: #fff; padding: 9px 12px;
       text-align: left; font-weight: 600;
     }
-    #term-view-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
-    #term-view-table tr:hover td { background: #f8faff; }
-    #term-view-table .no-data td { text-align: center; color: #9ca3af; padding: 24px; }
+    .view-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    .view-table tr:hover td { background: #f8faff; }
+    .view-table .no-data td { text-align: center; color: #9ca3af; padding: 24px; }
 
     /* バリアントタグ */
     .variant-tags { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -162,21 +175,14 @@
       border: 1px solid #fde68a;
       border-radius: 4px; padding: 2px 8px; font-size: .8rem;
     }
-    .variant-tag .del-variant {
-      background: none; border: none; color: #b45309;
-      cursor: pointer; font-size: .9rem; line-height: 1;
-      padding: 0 1px; display: none; /* 表示モードでは非表示 */
-    }
 
     /* ---- Edit mode ---- */
-    #term-edit-body tr td { padding: 6px 8px; vertical-align: middle; }
     .edit-input {
       width: 100%; border: 1px solid #d1d5db; border-radius: 5px;
       padding: 5px 8px; font-size: .85rem; outline: none;
     }
     .edit-input:focus { border-color: #3b82f6; }
 
-    /* バリアント編集エリア */
     .variant-edit-area { display: flex; flex-direction: column; gap: 4px; }
     .variant-tags-edit { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; min-height: 26px; }
     .variant-tag-edit {
@@ -203,6 +209,83 @@
     .btn-add-variant:hover { background: #dbeafe; }
 
     .edit-toolbar { display: flex; gap: 8px; }
+
+    /* ==== モーダル ==== */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.45); z-index: 1000;
+      justify-content: center; align-items: center;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 14px; padding: 28px 32px;
+      width: 520px; max-width: 92vw; max-height: 80vh;
+      box-shadow: 0 8px 32px rgba(0,0,0,.2);
+      display: flex; flex-direction: column;
+    }
+    .modal-title {
+      font-size: 1.05rem; font-weight: 700; color: #1e3a5f;
+      margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;
+    }
+    .modal-body {
+      flex: 1; overflow-y: auto; margin-bottom: 16px;
+      max-height: 50vh;
+    }
+    .modal-footer {
+      display: flex; justify-content: flex-end; gap: 10px;
+      border-top: 1px solid #e5e7eb; padding-top: 14px;
+    }
+
+    /* ---- ツリーチェックボックス ---- */
+    .tree-category {
+      margin-bottom: 12px;
+    }
+    .tree-category-label {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 700; font-size: .92rem; color: #1e3a5f;
+      padding: 6px 0; cursor: pointer;
+    }
+    .tree-category-label input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;
+    }
+    .tree-items {
+      margin-left: 28px; border-left: 2px solid #e5e7eb; padding-left: 12px;
+    }
+    .tree-item-label {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: .87rem; color: #374151; padding: 4px 0; cursor: pointer;
+    }
+    .tree-item-label input[type="checkbox"] {
+      width: 15px; height: 15px; accent-color: #3b82f6; cursor: pointer;
+      margin-top: 2px; flex-shrink: 0;
+    }
+    .tree-item-notes {
+      font-size: .78rem; color: #9ca3af; margin-left: 27px; margin-bottom: 2px;
+    }
+
+    /* ==== 固有観点 編集テーブル ==== */
+    .persp-category-header {
+      background: #f0f7ff; padding: 10px 14px; margin-top: 16px;
+      border-radius: 8px; display: flex; align-items: center; gap: 10px;
+      border: 1px solid #dbeafe;
+    }
+    .persp-category-header:first-child { margin-top: 0; }
+    .persp-category-header input {
+      flex: 1; border: 1px solid #bfdbfe; border-radius: 5px;
+      padding: 6px 10px; font-size: .9rem; font-weight: 700;
+      outline: none; background: #fff;
+    }
+    .persp-category-header input:focus { border-color: #3b82f6; }
+    .persp-items-container {
+      margin-left: 16px; border-left: 2px solid #dbeafe; padding-left: 14px;
+    }
+    .persp-item-row {
+      display: flex; gap: 8px; align-items: center; padding: 6px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .persp-item-row input { flex: 1; }
+    .persp-item-row .f-persp { flex: 2; }
+    .persp-item-row .f-notes { flex: 2; }
   </style>
 </head>
 <body>
@@ -215,114 +298,201 @@
 
 <main>
 
-  <!-- ==================== アップロードカード ==================== -->
-  <div class="card">
-    <div class="card-title">📁 PowerPoint レビュー</div>
-    <div class="drop-zone" id="drop-zone">
-      <input type="file" id="pptx-input" accept=".pptx" />
-      <div class="icon">📁</div>
-      <p><strong>クリックまたはドラッグ</strong>して .pptx を選択</p>
-      <div id="filename-display"></div>
-    </div>
-
-    <div class="field-row">
-      <label for="pages-input">対象ページ（任意）</label>
-      <input type="text" id="pages-input" placeholder="例: 1,3,5" />
-    </div>
-    <p class="hint">省略すると全スライドをレビューします。カンマ区切りで複数指定可能。</p>
-
-    <button class="btn-primary" id="review-btn" disabled>レビュー開始</button>
+  <!-- ==== タブナビゲーション ==== -->
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="tab-review">レビュー</button>
+    <button class="tab-btn" data-tab="tab-terminology">用語統一リスト</button>
+    <button class="tab-btn" data-tab="tab-perspectives">固有観点リスト</button>
   </div>
 
-  <!-- Progress -->
-  <div id="progress">
-    <div class="spinner"></div>
-    <p id="progress-msg">ファイルをアップロード中...</p>
+  <!-- ==================== タブ1: レビュー ==================== -->
+  <div class="tab-panel active" id="tab-review">
+    <div class="card">
+      <div class="card-title">📁 PowerPoint レビュー</div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="pptx-input" accept=".pptx" />
+        <div class="icon">📁</div>
+        <p><strong>クリックまたはドラッグ</strong>して .pptx を選択</p>
+        <div id="filename-display"></div>
+      </div>
+
+      <div class="field-row">
+        <label for="pages-input">対象ページ（任意）</label>
+        <input type="text" id="pages-input" placeholder="例: 1,3,5" />
+      </div>
+      <p class="hint">省略すると全スライドをレビューします。カンマ区切りで複数指定可能。</p>
+
+      <button class="btn-primary" id="review-btn" disabled>レビュー開始</button>
+    </div>
+
+    <!-- Progress -->
+    <div id="progress">
+      <div class="spinner"></div>
+      <p id="progress-msg">ファイルをアップロード中...</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" class="alert alert-error"></div>
+
+    <!-- Result -->
+    <div id="result-section">
+      <div class="result-header">
+        <h2>レビューレポート</h2>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <span class="result-meta" id="result-meta"></span>
+          <button class="btn-download" id="download-btn">Markdown を保存</button>
+        </div>
+      </div>
+      <div id="report-container"></div>
+    </div>
   </div>
 
-  <!-- Error -->
-  <div id="error-box" class="alert alert-error"></div>
+  <!-- ==================== タブ2: 用語統一リスト ==================== -->
+  <div class="tab-panel" id="tab-terminology">
+    <div class="card">
+      <div class="list-toolbar">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="card-title" style="margin-bottom:0;">📝 用語統一リスト</span>
+          <span class="count-badge" id="term-count-badge">読み込み中...</span>
+        </div>
+        <div id="term-view-toolbar">
+          <button class="btn-icon btn-edit" id="term-edit-btn">✏️ 編集</button>
+        </div>
+        <div id="term-edit-toolbar" style="display:none;" class="edit-toolbar">
+          <button class="btn-icon btn-cancel" id="term-cancel-btn">キャンセル</button>
+          <button class="btn-icon btn-save"   id="term-save-btn">💾 保存</button>
+        </div>
+      </div>
 
-  <!-- Result -->
-  <div id="result-section">
-    <div class="result-header">
-      <h2>レビューレポート</h2>
-      <div style="display:flex;gap:12px;align-items:center;">
-        <span class="result-meta" id="result-meta"></span>
-        <button class="btn-download" id="download-btn">Markdown を保存</button>
+      <div id="term-lock-banner" class="alert alert-error" style="display:none;"></div>
+      <div id="term-alert" class="alert"></div>
+
+      <!-- 表示モード -->
+      <div id="term-view">
+        <table class="view-table" id="term-view-table">
+          <thead>
+            <tr>
+              <th style="width:18%">正式表記</th>
+              <th style="width:32%">ゆれ（誤表記）</th>
+              <th style="width:14%">カテゴリ</th>
+              <th>備考</th>
+            </tr>
+          </thead>
+          <tbody id="term-view-body"></tbody>
+        </table>
+      </div>
+
+      <!-- 編集モード -->
+      <div id="term-edit" style="display:none;">
+        <table style="width:100%;border-collapse:collapse;font-size:.87rem;">
+          <thead>
+            <tr style="background:#1e3a5f;color:#fff;">
+              <th style="padding:9px 10px;text-align:left;width:16%">正式表記 <span style="color:#f87171">*</span></th>
+              <th style="padding:9px 10px;text-align:left;width:34%">ゆれ（誤表記）<br><span style="font-weight:400;font-size:.75rem;opacity:.85">テキスト入力後 Enter または「追加」</span></th>
+              <th style="padding:9px 10px;text-align:left;width:14%">カテゴリ</th>
+              <th style="padding:9px 10px;text-align:left;">備考</th>
+              <th style="padding:9px 10px;width:40px;"></th>
+            </tr>
+          </thead>
+          <tbody id="term-edit-body"></tbody>
+        </table>
+        <button class="btn-icon btn-add-row" id="term-add-row-btn">＋ 行を追加</button>
       </div>
     </div>
-    <div id="report-container"></div>
   </div>
 
-  <!-- ==================== 用語カスタマイズリスト ==================== -->
-  <div class="card" id="term-card">
-    <div class="term-toolbar">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <span class="card-title" style="margin-bottom:0;">📝 用語カスタマイズリスト</span>
-        <span class="term-count-badge" id="term-count-badge">読み込み中...</span>
+  <!-- ==================== タブ3: 固有観点リスト ==================== -->
+  <div class="tab-panel" id="tab-perspectives">
+    <div class="card">
+      <div class="list-toolbar">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="card-title" style="margin-bottom:0;">🔍 固有観点リスト</span>
+          <span class="count-badge" id="persp-count-badge">読み込み中...</span>
+        </div>
+        <div id="persp-view-toolbar">
+          <button class="btn-icon btn-edit" id="persp-edit-btn">✏️ 編集</button>
+        </div>
+        <div id="persp-edit-toolbar" style="display:none;" class="edit-toolbar">
+          <button class="btn-icon btn-cancel" id="persp-cancel-btn">キャンセル</button>
+          <button class="btn-icon btn-save"   id="persp-save-btn">💾 保存</button>
+        </div>
       </div>
-      <!-- 表示モードのボタン -->
-      <div id="view-toolbar">
-        <button class="btn-icon btn-edit" id="edit-btn">✏️ 編集</button>
+
+      <div id="persp-lock-banner" class="alert alert-error" style="display:none;"></div>
+      <div id="persp-alert" class="alert"></div>
+
+      <!-- 表示モード -->
+      <div id="persp-view">
+        <table class="view-table" id="persp-view-table">
+          <thead>
+            <tr>
+              <th style="width:22%">カテゴリ</th>
+              <th style="width:35%">観点</th>
+              <th>備考</th>
+            </tr>
+          </thead>
+          <tbody id="persp-view-body"></tbody>
+        </table>
       </div>
-      <!-- 編集モードのボタン -->
-      <div id="edit-toolbar" style="display:none;" class="edit-toolbar">
-        <button class="btn-icon btn-cancel" id="cancel-btn">キャンセル</button>
-        <button class="btn-icon btn-save"   id="save-btn">💾 保存</button>
+
+      <!-- 編集モード -->
+      <div id="persp-edit" style="display:none;">
+        <div id="persp-edit-container"></div>
+        <button class="btn-icon btn-add-row" id="persp-add-cat-btn" style="margin-top:16px;">＋ カテゴリを追加</button>
       </div>
-    </div>
-
-    <!-- 編集ロック中の通知 -->
-    <div id="lock-banner" class="alert alert-error" style="display:none;"></div>
-
-    <!-- 保存成功 / エラー通知 -->
-    <div id="term-alert" class="alert"></div>
-
-    <!-- 表示モード -->
-    <div id="term-view">
-      <table id="term-view-table">
-        <thead>
-          <tr>
-            <th style="width:18%">正式表記</th>
-            <th style="width:32%">ゆれ（誤表記）</th>
-            <th style="width:14%">カテゴリ</th>
-            <th>備考</th>
-          </tr>
-        </thead>
-        <tbody id="term-view-body"></tbody>
-      </table>
-    </div>
-
-    <!-- 編集モード -->
-    <div id="term-edit" style="display:none;">
-      <table id="term-edit-table" style="width:100%;border-collapse:collapse;font-size:.87rem;">
-        <thead>
-          <tr style="background:#1e3a5f;color:#fff;">
-            <th style="padding:9px 10px;text-align:left;width:16%">正式表記 <span style="color:#f87171">*</span></th>
-            <th style="padding:9px 10px;text-align:left;width:34%">ゆれ（誤表記）<br><span style="font-weight:400;font-size:.75rem;opacity:.85">テキスト入力後 Enter または「追加」</span></th>
-            <th style="padding:9px 10px;text-align:left;width:14%">カテゴリ</th>
-            <th style="padding:9px 10px;text-align:left;">備考</th>
-            <th style="padding:9px 10px;width:40px;"></th>
-          </tr>
-        </thead>
-        <tbody id="term-edit-body"></tbody>
-      </table>
-      <button class="btn-icon btn-add-row" id="add-row-btn">＋ 行を追加</button>
     </div>
   </div>
 
 </main>
 
+<!-- ==== 固有観点選択モーダル ==== -->
+<div class="modal-overlay" id="persp-modal">
+  <div class="modal-box">
+    <div class="modal-title">🔍 レビューに使用する固有観点を選択</div>
+    <div class="modal-body" id="persp-modal-body">
+      <p style="color:#9ca3af;text-align:center;padding:20px;">読み込み中...</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-icon btn-cancel" id="persp-modal-cancel">キャンセル</button>
+      <button class="btn-icon btn-save" id="persp-modal-confirm">レビュー実行</button>
+    </div>
+  </div>
+</div>
+
 <script>
+// ================================================================
+//  ユーティリティ
+// ================================================================
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ================================================================
+//  タブ切り替え
+// ================================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
 // ================================================================
 //  状態管理
 // ================================================================
 let selectedFile = null;
 let reportMarkdown = '';
 let reportFilename = 'review_report.md';
-let originalTerms = [];   // 編集キャンセル用
-let editingTerms  = [];   // 編集中データ
+
+// 用語
+let originalTerms = [];
+let editingTerms  = [];
+
+// 固有観点
+let originalPerspectives = [];
+let editingPerspectives  = [];
 
 // ================================================================
 //  アップロード UI
@@ -357,16 +527,97 @@ function selectFile(f) {
   resultSec.style.display = 'none';
 }
 
-reviewBtn.addEventListener('click', async () => {
+// ================================================================
+//  レビュー開始 → 固有観点モーダル → レビュー実行
+// ================================================================
+reviewBtn.addEventListener('click', () => {
   if (!selectedFile) return;
-  setLoading(true, 'ファイルをアップロード中...');
   errorBox.style.display = 'none';
+  showPerspectiveModal();
+});
+
+function showPerspectiveModal() {
+  const modal = document.getElementById('persp-modal');
+  const body  = document.getElementById('persp-modal-body');
+  body.innerHTML = '';
+
+  if (originalPerspectives.length === 0) {
+    body.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:20px;">固有観点が登録されていません。<br>「固有観点リスト」タブで追加してください。</p>';
+  } else {
+    originalPerspectives.forEach((cat, ci) => {
+      const div = document.createElement('div');
+      div.className = 'tree-category';
+
+      const catId = `modal-cat-${ci}`;
+      div.innerHTML = `
+        <label class="tree-category-label">
+          <input type="checkbox" id="${catId}" checked data-cat-idx="${ci}" />
+          ${esc(cat.category)}
+        </label>
+        <div class="tree-items" id="${catId}-items"></div>
+      `;
+      const itemsDiv = div.querySelector(`#${catId}-items`);
+      (cat.items || []).forEach((item, ii) => {
+        const itemId = `modal-item-${ci}-${ii}`;
+        const itemDiv = document.createElement('div');
+        itemDiv.innerHTML = `
+          <label class="tree-item-label">
+            <input type="checkbox" id="${itemId}" checked data-cat-idx="${ci}" data-item-idx="${ii}" />
+            ${esc(item.perspective)}
+          </label>
+          ${item.notes ? `<div class="tree-item-notes">${esc(item.notes)}</div>` : ''}
+        `;
+        itemsDiv.appendChild(itemDiv);
+      });
+
+      body.appendChild(div);
+
+      // カテゴリのチェックボックスで子要素を連動
+      const catCb = div.querySelector(`#${catId}`);
+      catCb.addEventListener('change', () => {
+        div.querySelectorAll('.tree-items input[type="checkbox"]').forEach(cb => {
+          cb.checked = catCb.checked;
+        });
+      });
+
+      // 子要素の変更でカテゴリの状態を更新
+      itemsDiv.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const all = itemsDiv.querySelectorAll('input[type="checkbox"]');
+          const checked = itemsDiv.querySelectorAll('input[type="checkbox"]:checked');
+          catCb.checked = checked.length > 0;
+          catCb.indeterminate = checked.length > 0 && checked.length < all.length;
+        });
+      });
+    });
+  }
+
+  modal.classList.add('show');
+}
+
+document.getElementById('persp-modal-cancel').addEventListener('click', () => {
+  document.getElementById('persp-modal').classList.remove('show');
+});
+
+document.getElementById('persp-modal-confirm').addEventListener('click', () => {
+  document.getElementById('persp-modal').classList.remove('show');
+  executeReview();
+});
+
+async function executeReview() {
+  setLoading(true, 'ファイルをアップロード中...');
   resultSec.style.display = 'none';
 
   const formData = new FormData();
   formData.append('pptx_file', selectedFile);
   const pages = document.getElementById('pages-input').value.trim();
   if (pages) formData.append('pages', pages);
+
+  // 選択された固有観点を収集
+  const selectedPersp = collectSelectedPerspectives();
+  if (selectedPersp.length > 0) {
+    formData.append('custom_perspectives', JSON.stringify(selectedPersp));
+  }
 
   const steps = [
     [1000,  'テキストを抽出中...'],
@@ -383,6 +634,12 @@ reviewBtn.addEventListener('click', async () => {
     if (!res.ok || data.error) { showUploadError(data.error || 'サーバーエラーが発生しました。'); return; }
 
     reportMarkdown = data.report;
+
+    if (!reportMarkdown || !reportMarkdown.trim()) {
+      showUploadError('レビューレポートが空です。再度お試しください。');
+      return;
+    }
+
     reportFilename = data.report_filename || 'review_report.md';
     const totalSlides   = data.total_slides ?? '?';
     const reviewedCount = (data.reviewed_slides || []).length;
@@ -396,7 +653,30 @@ reviewBtn.addEventListener('click', async () => {
   } finally {
     setLoading(false);
   }
-});
+}
+
+function collectSelectedPerspectives() {
+  const result = [];
+  const body = document.getElementById('persp-modal-body');
+  const catCbs = body.querySelectorAll('input[data-cat-idx]:not([data-item-idx])');
+  catCbs.forEach(catCb => {
+    const ci = parseInt(catCb.dataset.catIdx);
+    if (!catCb.checked && !catCb.indeterminate) return;
+    const cat = originalPerspectives[ci];
+    if (!cat) return;
+    const selectedItems = [];
+    const itemCbs = body.querySelectorAll(`input[data-cat-idx="${ci}"][data-item-idx]`);
+    itemCbs.forEach(itemCb => {
+      if (!itemCb.checked) return;
+      const ii = parseInt(itemCb.dataset.itemIdx);
+      if (cat.items[ii]) selectedItems.push(cat.items[ii]);
+    });
+    if (selectedItems.length > 0) {
+      result.push({ category: cat.category, items: selectedItems });
+    }
+  });
+  return result;
+}
 
 downloadBtn.addEventListener('click', () => {
   const blob = new Blob([reportMarkdown], { type: 'text/markdown;charset=utf-8' });
@@ -424,19 +704,15 @@ async function loadTerminology() {
     const res  = await fetch('/api/terminology');
     const data = await res.json();
     originalTerms = JSON.parse(JSON.stringify(data.terms || []));
-    renderViewTable(originalTerms);
-    updateCountBadge(originalTerms.length);
+    renderTermViewTable(originalTerms);
+    document.getElementById('term-count-badge').textContent = originalTerms.length + ' 語';
   } catch (e) {
     document.getElementById('term-view-body').innerHTML =
       '<tr class="no-data"><td colspan="4">用語リストの読み込みに失敗しました。</td></tr>';
   }
 }
 
-function updateCountBadge(n) {
-  document.getElementById('term-count-badge').textContent = n + ' 語';
-}
-
-function renderViewTable(terms) {
+function renderTermViewTable(terms) {
   const tbody = document.getElementById('term-view-body');
   if (terms.length === 0) {
     tbody.innerHTML = '<tr class="no-data"><td colspan="4">用語が登録されていません。編集ボタンから追加してください。</td></tr>';
@@ -459,159 +735,115 @@ function renderViewTable(terms) {
 // ================================================================
 //  用語リスト — 編集ロック
 // ================================================================
-const editBtn    = document.getElementById('edit-btn');
-const saveBtn    = document.getElementById('save-btn');
-const cancelBtn  = document.getElementById('cancel-btn');
-const addRowBtn  = document.getElementById('add-row-btn');
-const termAlert  = document.getElementById('term-alert');
-const lockBanner = document.getElementById('lock-banner');
+const termEditBtn   = document.getElementById('term-edit-btn');
+const termSaveBtn   = document.getElementById('term-save-btn');
+const termCancelBtn = document.getElementById('term-cancel-btn');
+const termAddRowBtn = document.getElementById('term-add-row-btn');
+const termAlert     = document.getElementById('term-alert');
+const termLockBanner= document.getElementById('term-lock-banner');
 
-let editLockToken = null;   // 自分が保持するロックトークン
-let lockPollTimer = null;   // ポーリング用タイマー
+let termLockToken = null;
+let termLockPollTimer = null;
 
-async function acquireEditLock() {
+async function acquireTermLock() {
   try {
     const res  = await fetch('/api/terminology/lock', { method: 'POST' });
     const data = await res.json();
-    if (data.ok) {
-      editLockToken = data.token;
-      return true;
-    } else {
-      showTermAlert('error', '🔒 ' + data.message);
-      return false;
-    }
-  } catch (e) {
-    showTermAlert('error', 'ロック取得エラー: ' + e.message);
+    if (data.ok) { termLockToken = data.token; return true; }
+    showTermAlert('error', '🔒 ' + data.message);
     return false;
-  }
+  } catch (e) { showTermAlert('error', 'ロック取得エラー: ' + e.message); return false; }
 }
-
-async function releaseEditLock() {
-  if (!editLockToken) return;
+async function releaseTermLock() {
+  if (!termLockToken) return;
+  try { await fetch('/api/terminology/lock', { method: 'DELETE', headers: {'Content-Type':'application/json'}, body: JSON.stringify({token:termLockToken}) }); } catch(_){}
+  termLockToken = null;
+}
+function startTermLockPoll() { if (!termLockPollTimer) termLockPollTimer = setInterval(checkTermLock, 5000); }
+function stopTermLockPoll()  { if (termLockPollTimer) { clearInterval(termLockPollTimer); termLockPollTimer = null; } }
+async function checkTermLock() {
+  if (termLockToken) return;
   try {
-    await fetch('/api/terminology/lock', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: editLockToken }),
-    });
-  } catch (_) { /* サイレント */ }
-  editLockToken = null;
-}
-
-function startLockPolling() {
-  if (lockPollTimer) return;
-  lockPollTimer = setInterval(checkLockStatus, 5000);
-}
-
-function stopLockPolling() {
-  if (lockPollTimer) { clearInterval(lockPollTimer); lockPollTimer = null; }
-}
-
-async function checkLockStatus() {
-  // 自分が編集中の場合はポーリング不要
-  if (editLockToken) return;
-  try {
-    const res  = await fetch('/api/terminology/lock');
+    const res = await fetch('/api/terminology/lock');
     const data = await res.json();
     if (data.locked) {
-      const m = Math.floor(data.remaining_sec / 60);
-      const s = data.remaining_sec % 60;
-      lockBanner.textContent = `🔒 現在他のユーザーが編集中です（あと約 ${m} 分 ${s} 秒で自動解除）`;
-      lockBanner.style.display = 'block';
-      editBtn.disabled = true;
-      editBtn.title    = '他のユーザーが編集中のため操作できません';
+      const m = Math.floor(data.remaining_sec / 60), s = data.remaining_sec % 60;
+      termLockBanner.textContent = `🔒 現在他のユーザーが編集中です（あと約 ${m} 分 ${s} 秒で自動解除）`;
+      termLockBanner.style.display = 'block';
+      termEditBtn.disabled = true;
     } else {
-      lockBanner.style.display = 'none';
-      editBtn.disabled = false;
-      editBtn.title    = '';
+      termLockBanner.style.display = 'none';
+      termEditBtn.disabled = false;
     }
-  } catch (_) { /* サイレント */ }
+  } catch(_){}
 }
 
 // ================================================================
 //  用語リスト — 編集モード
 // ================================================================
-editBtn.addEventListener('click', async () => {
-  const acquired = await acquireEditLock();
-  if (!acquired) return;
-  stopLockPolling();                          // 編集中はポーリング停止
-  lockBanner.style.display = 'none';
+termEditBtn.addEventListener('click', async () => {
+  if (!await acquireTermLock()) return;
+  stopTermLockPoll();
+  termLockBanner.style.display = 'none';
   editingTerms = JSON.parse(JSON.stringify(originalTerms));
-  renderEditTable(editingTerms);
-  switchMode('edit');
+  renderTermEditTable(editingTerms);
+  switchTermMode('edit');
 });
 
-cancelBtn.addEventListener('click', async () => {
-  await releaseEditLock();
+termCancelBtn.addEventListener('click', async () => {
+  await releaseTermLock();
   editingTerms = [];
-  switchMode('view');
+  switchTermMode('view');
   hideTermAlert();
-  startLockPolling();                         // 表示モードに戻ったらポーリング再開
+  startTermLockPoll();
 });
 
-addRowBtn.addEventListener('click', () => {
-  appendEditRow({ correct: '', variants: [], category: '', notes: '' });
+termAddRowBtn.addEventListener('click', () => {
+  appendTermEditRow({ correct: '', variants: [], category: '', notes: '' });
 });
 
-saveBtn.addEventListener('click', async () => {
-  const terms = collectEditData();
-  // 正式表記が空の行はエラー
+termSaveBtn.addEventListener('click', async () => {
+  const terms = collectTermEditData();
   const empty = terms.findIndex(t => !t.correct.trim());
-  if (empty !== -1) {
-    showTermAlert('error', `${empty + 1} 行目の「正式表記」が空です。入力してください。`);
-    return;
-  }
+  if (empty !== -1) { showTermAlert('error', `${empty+1} 行目の「正式表記」が空です。`); return; }
 
-  saveBtn.disabled = true;
-  saveBtn.textContent = '保存中...';
+  termSaveBtn.disabled = true; termSaveBtn.textContent = '保存中...';
   try {
-    const res  = await fetch('/api/terminology', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ terms }),
-    });
+    const res = await fetch('/api/terminology', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({terms}) });
     const data = await res.json();
     if (!res.ok || data.error) { showTermAlert('error', data.error || '保存に失敗しました。'); return; }
-
     originalTerms = JSON.parse(JSON.stringify(terms));
-    renderViewTable(originalTerms);
-    updateCountBadge(originalTerms.length);
-    await releaseEditLock();                  // 保存成功後にロック解除
-    switchMode('view');
+    renderTermViewTable(originalTerms);
+    document.getElementById('term-count-badge').textContent = originalTerms.length + ' 語';
+    await releaseTermLock();
+    switchTermMode('view');
     showTermAlert('success', `保存しました（${data.term_count} 語）`);
     setTimeout(hideTermAlert, 3000);
-    startLockPolling();                       // 表示モードに戻ったらポーリング再開
-  } catch (e) {
-    showTermAlert('error', '通信エラー: ' + e.message);
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.textContent = '💾 保存';
-  }
+    startTermLockPoll();
+  } catch(e) { showTermAlert('error', '通信エラー: ' + e.message); }
+  finally { termSaveBtn.disabled = false; termSaveBtn.textContent = '💾 保存'; }
 });
 
-function switchMode(mode) {
+function switchTermMode(mode) {
   const isEdit = mode === 'edit';
-  document.getElementById('term-view').style.display   = isEdit ? 'none'  : 'block';
-  document.getElementById('term-edit').style.display   = isEdit ? 'block' : 'none';
-  document.getElementById('view-toolbar').style.display = isEdit ? 'none'  : 'flex';
-  document.getElementById('edit-toolbar').style.display = isEdit ? 'flex'  : 'none';
+  document.getElementById('term-view').style.display         = isEdit ? 'none' : 'block';
+  document.getElementById('term-edit').style.display         = isEdit ? 'block': 'none';
+  document.getElementById('term-view-toolbar').style.display = isEdit ? 'none' : 'flex';
+  document.getElementById('term-edit-toolbar').style.display = isEdit ? 'flex' : 'none';
 }
 
-// ---- 編集テーブル描画 ----
-function renderEditTable(terms) {
-  const tbody = document.getElementById('term-edit-body');
-  tbody.innerHTML = '';
-  terms.forEach(t => appendEditRow(t));
+function renderTermEditTable(terms) {
+  document.getElementById('term-edit-body').innerHTML = '';
+  terms.forEach(t => appendTermEditRow(t));
 }
 
-function appendEditRow(t) {
+function appendTermEditRow(t) {
   const tbody = document.getElementById('term-edit-body');
   const tr = document.createElement('tr');
   tr.style.borderBottom = '1px solid #e5e7eb';
-
   tr.innerHTML = `
-    <td><input class="edit-input f-correct" type="text" value="${esc(t.correct)}" placeholder="例: サーバ" /></td>
-    <td>
+    <td style="padding:6px 8px;vertical-align:middle;"><input class="edit-input f-correct" type="text" value="${esc(t.correct)}" placeholder="例: サーバ" /></td>
+    <td style="padding:6px 8px;vertical-align:middle;">
       <div class="variant-edit-area">
         <div class="variant-tags-edit"></div>
         <div class="variant-add-row">
@@ -620,31 +852,18 @@ function appendEditRow(t) {
         </div>
       </div>
     </td>
-    <td><input class="edit-input f-category" type="text" value="${esc(t.category || '')}" placeholder="例: IT用語" /></td>
-    <td><input class="edit-input f-notes"    type="text" value="${esc(t.notes    || '')}" placeholder="備考" /></td>
-    <td style="text-align:center;"><button class="btn-del-row" title="この行を削除">🗑</button></td>
+    <td style="padding:6px 8px;vertical-align:middle;"><input class="edit-input f-category" type="text" value="${esc(t.category||'')}" placeholder="例: IT用語" /></td>
+    <td style="padding:6px 8px;vertical-align:middle;"><input class="edit-input f-notes"    type="text" value="${esc(t.notes||'')}" placeholder="備考" /></td>
+    <td style="padding:6px 8px;text-align:center;vertical-align:middle;"><button class="btn-del-row" title="削除">🗑</button></td>
   `;
-
-  // バリアントを追加
   const tagsEl = tr.querySelector('.variant-tags-edit');
   (t.variants || []).forEach(v => addVariantTag(tagsEl, v));
-
-  // バリアント追加ボタン
   const addInput = tr.querySelector('.variant-add-input');
   const addVBtn  = tr.querySelector('.btn-add-variant');
-  const doAddVariant = () => {
-    const val = addInput.value.trim();
-    if (!val) return;
-    addVariantTag(tagsEl, val);
-    addInput.value = '';
-    addInput.focus();
-  };
-  addVBtn.addEventListener('click', doAddVariant);
-  addInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doAddVariant(); } });
-
-  // 行削除
+  const doAdd = () => { const val = addInput.value.trim(); if(!val)return; addVariantTag(tagsEl, val); addInput.value=''; addInput.focus(); };
+  addVBtn.addEventListener('click', doAdd);
+  addInput.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();doAdd();} });
   tr.querySelector('.btn-del-row').addEventListener('click', () => tr.remove());
-
   tbody.appendChild(tr);
 }
 
@@ -657,10 +876,8 @@ function addVariantTag(container, text) {
   container.appendChild(span);
 }
 
-// ---- 編集データ収集 ----
-function collectEditData() {
-  const rows = document.querySelectorAll('#term-edit-body tr');
-  return Array.from(rows).map(tr => ({
+function collectTermEditData() {
+  return Array.from(document.querySelectorAll('#term-edit-body tr')).map(tr => ({
     correct:  tr.querySelector('.f-correct').value,
     variants: Array.from(tr.querySelectorAll('.variant-tag-edit')).map(s => s.dataset.value),
     category: tr.querySelector('.f-category').value,
@@ -668,7 +885,6 @@ function collectEditData() {
   }));
 }
 
-// ---- アラート ----
 function showTermAlert(type, msg) {
   termAlert.className = 'alert ' + (type === 'error' ? 'alert-error' : 'alert-success');
   termAlert.textContent = (type === 'error' ? '⚠ ' : '✅ ') + msg;
@@ -677,18 +893,226 @@ function showTermAlert(type, msg) {
 function hideTermAlert() { termAlert.style.display = 'none'; }
 
 // ================================================================
-//  ユーティリティ
+//  固有観点リスト — 表示
 // ================================================================
-function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+async function loadPerspectives() {
+  try {
+    const res  = await fetch('/api/perspectives');
+    const data = await res.json();
+    originalPerspectives = JSON.parse(JSON.stringify(data.perspectives || []));
+    renderPerspViewTable(originalPerspectives);
+    updatePerspCountBadge();
+  } catch(e) {
+    document.getElementById('persp-view-body').innerHTML =
+      '<tr class="no-data"><td colspan="3">固有観点リストの読み込みに失敗しました。</td></tr>';
+  }
 }
+
+function updatePerspCountBadge() {
+  const total = originalPerspectives.reduce((s, c) => s + (c.items||[]).length, 0);
+  document.getElementById('persp-count-badge').textContent = `${originalPerspectives.length} カテゴリ / ${total} 観点`;
+}
+
+function renderPerspViewTable(perspectives) {
+  const tbody = document.getElementById('persp-view-body');
+  if (perspectives.length === 0) {
+    tbody.innerHTML = '<tr class="no-data"><td colspan="3">固有観点が登録されていません。編集ボタンから追加してください。</td></tr>';
+    return;
+  }
+  let html = '';
+  perspectives.forEach(cat => {
+    const items = cat.items || [];
+    items.forEach((item, i) => {
+      html += `<tr>
+        ${i === 0 ? `<td rowspan="${items.length}" style="font-weight:700;vertical-align:top;background:#f8faff;">${esc(cat.category)}</td>` : ''}
+        <td>${esc(item.perspective)}</td>
+        <td style="font-size:.82rem;color:#6b7280;">${esc(item.notes || '')}</td>
+      </tr>`;
+    });
+    if (items.length === 0) {
+      html += `<tr><td style="font-weight:700;background:#f8faff;">${esc(cat.category)}</td><td colspan="2" style="color:#9ca3af;">（観点なし）</td></tr>`;
+    }
+  });
+  tbody.innerHTML = html;
+}
+
+// ================================================================
+//  固有観点リスト — 編集ロック
+// ================================================================
+const perspEditBtn   = document.getElementById('persp-edit-btn');
+const perspSaveBtn   = document.getElementById('persp-save-btn');
+const perspCancelBtn = document.getElementById('persp-cancel-btn');
+const perspAddCatBtn = document.getElementById('persp-add-cat-btn');
+const perspAlert     = document.getElementById('persp-alert');
+const perspLockBanner= document.getElementById('persp-lock-banner');
+
+let perspLockToken = null;
+let perspLockPollTimer = null;
+
+async function acquirePerspLock() {
+  try {
+    const res = await fetch('/api/perspectives/lock', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) { perspLockToken = data.token; return true; }
+    showPerspAlert('error', '🔒 ' + data.message);
+    return false;
+  } catch(e) { showPerspAlert('error', 'ロック取得エラー: ' + e.message); return false; }
+}
+async function releasePerspLock() {
+  if (!perspLockToken) return;
+  try { await fetch('/api/perspectives/lock', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:perspLockToken}) }); } catch(_){}
+  perspLockToken = null;
+}
+function startPerspLockPoll() { if (!perspLockPollTimer) perspLockPollTimer = setInterval(checkPerspLock, 5000); }
+function stopPerspLockPoll()  { if (perspLockPollTimer) { clearInterval(perspLockPollTimer); perspLockPollTimer = null; } }
+async function checkPerspLock() {
+  if (perspLockToken) return;
+  try {
+    const res = await fetch('/api/perspectives/lock');
+    const data = await res.json();
+    if (data.locked) {
+      const m = Math.floor(data.remaining_sec / 60), s = data.remaining_sec % 60;
+      perspLockBanner.textContent = `🔒 現在他のユーザーが編集中です（あと約 ${m} 分 ${s} 秒で自動解除）`;
+      perspLockBanner.style.display = 'block';
+      perspEditBtn.disabled = true;
+    } else {
+      perspLockBanner.style.display = 'none';
+      perspEditBtn.disabled = false;
+    }
+  } catch(_){}
+}
+
+// ================================================================
+//  固有観点リスト — 編集モード
+// ================================================================
+perspEditBtn.addEventListener('click', async () => {
+  if (!await acquirePerspLock()) return;
+  stopPerspLockPoll();
+  perspLockBanner.style.display = 'none';
+  editingPerspectives = JSON.parse(JSON.stringify(originalPerspectives));
+  renderPerspEditForm(editingPerspectives);
+  switchPerspMode('edit');
+});
+
+perspCancelBtn.addEventListener('click', async () => {
+  await releasePerspLock();
+  editingPerspectives = [];
+  switchPerspMode('view');
+  hidePerspAlert();
+  startPerspLockPoll();
+});
+
+perspAddCatBtn.addEventListener('click', () => {
+  appendPerspCategoryBlock({ category: '', items: [{ perspective: '', notes: '' }] });
+});
+
+perspSaveBtn.addEventListener('click', async () => {
+  const perspectives = collectPerspEditData();
+  const emptyCat = perspectives.findIndex(c => !c.category.trim());
+  if (emptyCat !== -1) { showPerspAlert('error', `カテゴリ ${emptyCat+1} の名前が空です。`); return; }
+  for (let i = 0; i < perspectives.length; i++) {
+    const emptyItem = perspectives[i].items.findIndex(it => !it.perspective.trim());
+    if (emptyItem !== -1) { showPerspAlert('error', `「${perspectives[i].category}」の観点 ${emptyItem+1} が空です。`); return; }
+  }
+
+  perspSaveBtn.disabled = true; perspSaveBtn.textContent = '保存中...';
+  try {
+    const res = await fetch('/api/perspectives', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({perspectives}) });
+    const data = await res.json();
+    if (!res.ok || data.error) { showPerspAlert('error', data.error || '保存に失敗しました。'); return; }
+    originalPerspectives = JSON.parse(JSON.stringify(perspectives));
+    renderPerspViewTable(originalPerspectives);
+    updatePerspCountBadge();
+    await releasePerspLock();
+    switchPerspMode('view');
+    showPerspAlert('success', `保存しました（${data.category_count} カテゴリ / ${data.item_count} 観点）`);
+    setTimeout(hidePerspAlert, 3000);
+    startPerspLockPoll();
+  } catch(e) { showPerspAlert('error', '通信エラー: ' + e.message); }
+  finally { perspSaveBtn.disabled = false; perspSaveBtn.textContent = '💾 保存'; }
+});
+
+function switchPerspMode(mode) {
+  const isEdit = mode === 'edit';
+  document.getElementById('persp-view').style.display         = isEdit ? 'none' : 'block';
+  document.getElementById('persp-edit').style.display         = isEdit ? 'block': 'none';
+  document.getElementById('persp-view-toolbar').style.display = isEdit ? 'none' : 'flex';
+  document.getElementById('persp-edit-toolbar').style.display = isEdit ? 'flex' : 'none';
+}
+
+function renderPerspEditForm(perspectives) {
+  const container = document.getElementById('persp-edit-container');
+  container.innerHTML = '';
+  perspectives.forEach(cat => appendPerspCategoryBlock(cat));
+}
+
+function appendPerspCategoryBlock(cat) {
+  const container = document.getElementById('persp-edit-container');
+  const block = document.createElement('div');
+  block.className = 'persp-cat-block';
+
+  const header = document.createElement('div');
+  header.className = 'persp-category-header';
+  header.innerHTML = `
+    <input type="text" class="f-cat-name" value="${esc(cat.category)}" placeholder="カテゴリ名 (例: デザイン)" />
+    <button class="btn-del-row" title="カテゴリを削除">🗑</button>
+    <button class="btn-icon btn-add-row" style="margin:0;padding:5px 12px;font-size:.8rem;">＋ 観点追加</button>
+  `;
+  block.appendChild(header);
+
+  const itemsDiv = document.createElement('div');
+  itemsDiv.className = 'persp-items-container';
+  block.appendChild(itemsDiv);
+
+  (cat.items || []).forEach(item => appendPerspItemRow(itemsDiv, item));
+
+  // イベント
+  header.querySelector('.btn-del-row').addEventListener('click', () => block.remove());
+  header.querySelector('.btn-add-row').addEventListener('click', () => {
+    appendPerspItemRow(itemsDiv, { perspective: '', notes: '' });
+  });
+
+  container.appendChild(block);
+}
+
+function appendPerspItemRow(container, item) {
+  const row = document.createElement('div');
+  row.className = 'persp-item-row';
+  row.innerHTML = `
+    <input class="edit-input f-persp" type="text" value="${esc(item.perspective)}" placeholder="観点 (例: フォントサイズの不統一)" />
+    <input class="edit-input f-notes" type="text" value="${esc(item.notes || '')}" placeholder="備考 (例: 具体的な箇所を指摘)" />
+    <button class="btn-del-row" title="削除">🗑</button>
+  `;
+  row.querySelector('.btn-del-row').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function collectPerspEditData() {
+  return Array.from(document.querySelectorAll('.persp-cat-block')).map(block => ({
+    category: block.querySelector('.f-cat-name').value,
+    items: Array.from(block.querySelectorAll('.persp-item-row')).map(row => ({
+      perspective: row.querySelector('.f-persp').value,
+      notes: row.querySelector('.f-notes').value,
+    })),
+  }));
+}
+
+function showPerspAlert(type, msg) {
+  perspAlert.className = 'alert ' + (type === 'error' ? 'alert-error' : 'alert-success');
+  perspAlert.textContent = (type === 'error' ? '⚠ ' : '✅ ') + msg;
+  perspAlert.style.display = 'block';
+}
+function hidePerspAlert() { perspAlert.style.display = 'none'; }
 
 // ================================================================
 //  初期化
 // ================================================================
 loadTerminology();
-checkLockStatus();   // 初回即時確認
-startLockPolling();  // 5秒ごとにロック状態を確認
+loadPerspectives();
+checkTermLock();
+startTermLockPoll();
+checkPerspLock();
+startPerspLockPoll();
 </script>
 </body>
 </html>
