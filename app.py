@@ -191,7 +191,6 @@ def build_review_prompt(
     extract_data: dict,
     terminology_data: dict,
     selected_perspectives: list[dict] | None = None,
-    known_terms: list[str] | None = None,
 ) -> str:
     """SKILL.md の Step 5–6 に相当するレビュー指示プロンプトを生成する。"""
     today = date.today().strftime("%Y-%m-%d")
@@ -214,14 +213,6 @@ def build_review_prompt(
     has_perspectives = bool(selected_perspectives)
     perspective_count = "4" if has_perspectives else "3"
 
-    # 顧客向け表現の調整観点：custom_perspectives.json 登録用語は既知のため指摘しない
-    known_terms_instruction = ""
-    if known_terms:
-        terms_str = "、".join(known_terms)
-        known_terms_instruction = (
-            f"- 以下の用語は顧客が既に知っているため指摘しない：{terms_str}\n"
-        )
-
     return f"""あなたはPowerPoint資料の品質レビュアーです。
 以下のスライド抽出データと用語チェック結果をもとに、{perspective_count}つの観点でレビューを行い、
 指定のMarkdownフォーマットでレポートを出力してください。
@@ -240,8 +231,7 @@ def build_review_prompt(
 - 主語・述語のねじれ
 - 因果関係の破綻（接続詞と内容が対応していないケース）
 
-{perspectives_section}### 観点{perspective_count}：顧客向け表現の調整
-{known_terms_instruction}- 技術的略語（APIM、RBAC、IaC 等）を説明なしに使用している箇所を指摘（ただし上記の既知用語は除く）
+{perspectives_section}### 観点{perspective_count}：文体の調整
 - です・ます調とだ・である調の混在
 - 「など」「等」「場合によっては」の多用
 
@@ -262,7 +252,7 @@ def build_review_prompt(
 
 ## 総合サマリー
 
-（全体を通じた主な課題と優先度が高い改善ポイントを3〜5行で要約。表記ゆれの件数・論理問題の有無・{"固有観点の問題・" if has_perspectives else ""}専門用語の多用・文体の乱れなど）
+（全体を通じた主な課題と優先度が高い改善ポイントを3〜5行で要約。表記ゆれの件数・論理問題の有無・{"固有観点の問題・" if has_perspectives else ""}文体の乱れなど）
 
 ---
 
@@ -273,7 +263,7 @@ def build_review_prompt(
 | 📝 表記ゆれ・文章校正 | N件 |
 | 🔗 論理的整合性 | N件 |
 {perspectives_count_row}
-| 👥 専門用語・顧客表現 | N件 |
+| 👥 文体 | N件 |
 | **合計** | **N件** |
 
 ---
@@ -972,17 +962,8 @@ def review():
         terminology_data = run_terminology_check(extract_stdout)
 
         # --- AI でレビュー（AI_PROVIDER に応じて Anthropic / OpenAI を切り替え）---
-        # custom_perspectives.json の全登録用語を「顧客既知用語」として収集
-        all_persp_data = _load_perspectives()
-        known_terms: list[str] = [
-            item["perspective"].strip()
-            for cat in all_persp_data.get("perspectives", [])
-            for item in cat.get("items", [])
-            if item.get("perspective", "").strip()
-        ]
         prompt = build_review_prompt(
             file.filename, extract_data, terminology_data, selected_perspectives,
-            known_terms=known_terms if known_terms else None,
         )
         report_md = call_ai_review(prompt)
 
