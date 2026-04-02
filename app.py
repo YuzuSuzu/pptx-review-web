@@ -29,6 +29,7 @@ import sys
 import tempfile
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 
@@ -149,6 +150,10 @@ _cleanup_uploads_on_startup()
 
 MAX_UPLOAD_MB = 50
 
+# チャンクサイズ: config.yaml → 環境変数 REVIEW_CHUNK_SIZE → デフォルト 3
+_review_cfg = _config.get("review", {})
+_REVIEW_CHUNK_SIZE = int(os.getenv("REVIEW_CHUNK_SIZE", str(_review_cfg.get("chunk_size", 3))))
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
@@ -191,7 +196,6 @@ def build_review_prompt(
     extract_data: dict,
     terminology_data: dict,
     selected_perspectives: list[dict] | None = None,
-    known_terms: list[str] | None = None,
 ) -> str:
     """SKILL.md の Step 5–6 に相当するレビュー指示プロンプトを生成する。"""
     today = date.today().strftime("%Y-%m-%d")
@@ -214,14 +218,6 @@ def build_review_prompt(
     has_perspectives = bool(selected_perspectives)
     perspective_count = "4" if has_perspectives else "3"
 
-    # 顧客向け表現の調整観点：custom_perspectives.json 登録用語は既知のため指摘しない
-    known_terms_instruction = ""
-    if known_terms:
-        terms_str = "、".join(known_terms)
-        known_terms_instruction = (
-            f"- 以下の用語は顧客が既に知っているため指摘しない：{terms_str}\n"
-        )
-
     return f"""あなたはPowerPoint資料の品質レビュアーです。
 以下のスライド抽出データと用語チェック結果をもとに、{perspective_count}つの観点でレビューを行い、
 指定のMarkdownフォーマットでレポートを出力してください。
@@ -240,8 +236,7 @@ def build_review_prompt(
 - 主語・述語のねじれ
 - 因果関係の破綻（接続詞と内容が対応していないケース）
 
-{perspectives_section}### 観点{perspective_count}：顧客向け表現の調整
-{known_terms_instruction}- 技術的略語（APIM、RBAC、IaC 等）を説明なしに使用している箇所を指摘（ただし上記の既知用語は除く）
+{perspectives_section}### 観点{perspective_count}：文体の調整
 - です・ます調とだ・である調の混在
 - 「など」「等」「場合によっては」の多用
 
@@ -262,7 +257,7 @@ def build_review_prompt(
 
 ## 総合サマリー
 
-（全体を通じた主な課題と優先度が高い改善ポイントを3〜5行で要約。表記ゆれの件数・論理問題の有無・{"固有観点の問題・" if has_perspectives else ""}専門用語の多用・文体の乱れなど）
+（全体を通じた主な課題と優先度が高い改善ポイントを3〜5行で要約。表記ゆれの件数・論理問題の有無・{"固有観点の問題・" if has_perspectives else ""}文体の乱れなど）
 
 ---
 
@@ -273,7 +268,7 @@ def build_review_prompt(
 | 📝 表記ゆれ・文章校正 | N件 |
 | 🔗 論理的整合性 | N件 |
 {perspectives_count_row}
-| 👥 専門用語・顧客表現 | N件 |
+| 👥 文体 | N件 |
 | **合計** | **N件** |
 
 ---
@@ -406,7 +401,12 @@ def run_terminology_check(extract_stdout: str) -> dict:
 # Teams 通知
 # ---------------------------------------------------------------------------
 def _notify_teams_api_error(error_message: str) -> None:
-    """API 認証エラー（401）発生時に Teams Incoming Webhook で通知する。"""
+    """API 認証エラー（401）発生時に Teams へ通知する。
+
+    webhook_type:
+      incoming_webhook : Teams Incoming Webhook（MessageCard 形式）
+      power_automate   : Power Automate「HTTP 要求を受信したとき」トリガー（Adaptive Card 形式）
+    """
     teams_cfg = _config.get("teams", {})
     if not teams_cfg.get("enabled"):
         return
@@ -417,27 +417,74 @@ def _notify_teams_api_error(error_message: str) -> None:
 
     import datetime as _dt
 
-    payload = {
-        "@type": "MessageCard",
-        "@context": "http://schema.org/extensions",
-        "themeColor": "FF0000",
-        "summary": "API 認証エラー (401)",
-        "sections": [
-            {
-                "activityTitle": "⚠️ pptx-reviewer: API 接続エラー (Error code: 401)",
-                "activitySubtitle": "APIキーの認証に失敗しました。.env ファイルのAPIキーを確認してください。",
-                "facts": [
-                    {"name": "ホスト", "value": socket.gethostname()},
-                    {"name": "発生時刻", "value": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-                    {"name": "エラー詳細", "value": error_message[:500]},
-                ],
-            }
-        ],
-    }
+    webhook_type = teams_cfg.get("webhook_type", "power_automate").strip().lower()
+    now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    host = socket.gethostname()
+    detail = error_message[:500]
+
+    if webhook_type == "incoming_webhook":
+        # 旧来の Incoming Webhook（MessageCard 形式）
+        payload: dict = {
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "themeColor": "FF0000",
+            "summary": "API 認証エラー (401)",
+            "sections": [
+                {
+                    "activityTitle": "pptx-reviewer: API 接続エラー (Error code: 401)",
+                    "activitySubtitle": "APIキーの認証に失敗しました。.env ファイルのAPIキーを確認してください。",
+                    "facts": [
+                        {"name": "ホスト", "value": host},
+                        {"name": "発生時刻", "value": now_str},
+                        {"name": "エラー詳細", "value": detail},
+                    ],
+                }
+            ],
+        }
+    else:
+        # Power Automate「HTTP 要求を受信したとき」→ Teams チャネルへ投稿
+        # Adaptive Card 形式（Teams クライアントで直接レンダリング）
+        payload = {
+            "type": "message",
+            "attachments": [
+                {
+                    "contentType": "application/vnd.microsoft.card.adaptive",
+                    "content": {
+                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                        "type": "AdaptiveCard",
+                        "version": "1.4",
+                        "body": [
+                            {
+                                "type": "TextBlock",
+                                "text": "pptx-reviewer: API 認証エラー (401)",
+                                "weight": "Bolder",
+                                "size": "Medium",
+                                "color": "Attention",
+                            },
+                            {
+                                "type": "FactSet",
+                                "facts": [
+                                    {"title": "ホスト", "value": host},
+                                    {"title": "発生時刻", "value": now_str},
+                                    {"title": "エラー詳細", "value": detail},
+                                ],
+                            },
+                            {
+                                "type": "TextBlock",
+                                "text": "APIキーの認証に失敗しました。管理者に連絡してAPIキーの再発行・登録を依頼してください。",
+                                "wrap": True,
+                                "color": "Attention",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+
     try:
         resp = requests_lib.post(webhook_url, json=payload, timeout=10)
         resp.raise_for_status()
-        logger.info("Teams 通知送信完了")
+        logger.info("Teams 通知送信完了 (type=%s)", webhook_type)
     except requests_lib.RequestException as e:
         logger.warning("Teams 通知失敗: %s", e)
 
@@ -464,7 +511,11 @@ def call_claude_review(prompt: str) -> str:
         err_str = str(e)
         logger.error("Claude API 認証エラー (401): %s", err_str)
         _notify_teams_api_error(err_str)
-        raise RuntimeError(f"API認証エラー (Error code: 401): {err_str}") from e
+        raise RuntimeError(
+            "API_AUTH_ERROR: APIキーの認証に失敗しました。"
+            "管理者に連絡してAPIキーの再発行・登録を依頼してください。"
+            "（画面上部の「OPENAI KEY SETTING」ボタンから登録可能です）"
+        ) from e
     text = message.content[0].text if message.content else ""
     if not text or not text.strip():
         logger.warning("Claude API が空のレスポンスを返しました")
@@ -537,7 +588,11 @@ def call_openai_review(prompt: str) -> str:
         if "401" in err_str:
             logger.error("OpenAI API 認証エラー (401): %s", err_str)
             _notify_teams_api_error(err_str)
-            raise RuntimeError(f"API認証エラー (Error code: 401): {err_str}") from e
+            raise RuntimeError(
+                "API_AUTH_ERROR: APIキーの認証に失敗しました。"
+                "管理者に連絡してAPIキーの再発行・登録を依頼してください。"
+                "（画面上部の「OPENAI KEY SETTING」ボタンから登録可能です）"
+            ) from e
         raise
     content = response.choices[0].message.content
     if content is None or not content.strip():
@@ -585,6 +640,240 @@ def call_ai_review(prompt: str) -> str:
                 )
                 continue
             raise
+
+
+# ---------------------------------------------------------------------------
+# チャンク分割レビュー
+# ---------------------------------------------------------------------------
+
+def _split_extract_data(extract_data: dict, chunk_size: int) -> list[dict]:
+    """スライドデータを chunk_size 枚ずつのチャンクに分割する。"""
+    slides = extract_data.get("slides", [])
+    total = extract_data.get("total_slides", len(slides))
+    chunks: list[dict] = []
+    for i in range(0, len(slides), chunk_size):
+        chunk_slides = slides[i : i + chunk_size]
+        chunks.append({
+            "total_slides": total,
+            "reviewed_slides": [s["slide_number"] for s in chunk_slides],
+            "slides": chunk_slides,
+        })
+    return chunks
+
+
+def _build_chunk_prompt(
+    filename: str,
+    chunk_data: dict,
+    terminology_data: dict,
+    selected_perspectives: list[dict] | None,
+    chunk_index: int,
+    total_chunks: int,
+) -> str:
+    """1チャンク分のスライド別指摘事項のみを返すプロンプトを生成する。"""
+    slides = chunk_data.get("reviewed_slides", [])
+    slide_range = f"スライド {slides[0]}〜{slides[-1]}" if slides else "不明"
+    extract_json_str = json.dumps(chunk_data, ensure_ascii=False, indent=2)
+    terminology_json_str = json.dumps(terminology_data, ensure_ascii=False, indent=2)
+
+    perspectives_section = _build_perspectives_section(selected_perspectives)
+    has_perspectives = bool(selected_perspectives)
+    perspective_count = "4" if has_perspectives else "3"
+
+    return f"""あなたはPowerPoint資料の品質レビュアーです。
+以下は「{filename}」の一部（チャンク {chunk_index}/{total_chunks}、{slide_range}）です。
+{perspective_count}つの観点でレビューし、**スライド別の指摘事項のみ**を出力してください。
+総合サマリー・件数表・全体的な改善提案は出力不要です。
+
+## レビュー観点
+
+### 観点1：文章校正・表記ゆれ
+- 用語チェック結果（terminology_data）の誤表記を漏れなく報告する
+- リスト外の表記ゆれも指摘する（同じ概念に複数の表記が混在）
+- 誤字・脱字・文法エラー（助詞の誤り、読点の欠落など）
+- 英単語・英語の関数名・技術用語は指摘対象外
+- notes（ノートペイン）のテキストも対象（箇所は「ノートペイン」と明記）
+
+### 観点2：論理的整合性
+- スライド間の矛盾（前後で事実が食い違っていないか）
+- 主語・述語のねじれ
+- 因果関係の破綻（接続詞と内容が対応していないケース）
+
+{perspectives_section}### 観点{perspective_count}：文体の調整
+- です・ます調とだ・である調の混在
+- 「など」「等」「場合によっては」の多用
+
+## 出力フォーマット（厳守）
+
+指摘があるスライドのみ、以下の形式で出力してください。指摘が全くない場合は「指摘なし」とのみ出力してください。
+
+### スライド N：タイトル
+
+| カテゴリ | 箇所 | 指摘内容 | 改善案 |
+|---------|------|---------|--------|
+| 📝 表記ゆれ | テキストボックス 2行目 | ... | ...することを推奨 |
+
+## 出力ルール
+- テキストの引用・転載は禁止。指摘内容と箇所の説明のみ記載
+- 箇所の示し方: shape_kind（タイトル／テキストボックス／図形／表／グラフ／ノートペイン）と位置（「○行目」など）
+- 改善案は「〜することを推奨」で統一
+- コードブロック（```）は出力に含めない
+
+---
+
+## スライド抽出データ
+
+```json
+{extract_json_str}
+```
+
+## 用語チェック結果
+
+```json
+{terminology_json_str}
+```
+"""
+
+
+def _build_synthesis_prompt(
+    filename: str,
+    chunk_results: list[str],
+    total_slides: int,
+    reviewed_slides: list[int],
+    selected_perspectives: list[dict] | None,
+) -> str:
+    """全チャンクの指摘結果を統合して最終レポートを生成するプロンプトを生成する。"""
+    from datetime import date as _date
+    today = _date.today().strftime("%Y-%m-%d")
+    page_label = (
+        "全スライド"
+        if len(reviewed_slides) == total_slides
+        else ", ".join(str(p) for p in reviewed_slides) + " ページ"
+    )
+    has_perspectives = bool(selected_perspectives)
+    perspectives_count_row = _build_perspectives_count_row(selected_perspectives)
+
+    all_findings = "\n\n---\n\n".join(
+        f"【チャンク {i + 1}】\n{r}" for i, r in enumerate(chunk_results)
+    )
+
+    return f"""あなたはPowerPoint資料の品質レビュアーです。
+以下は「{filename}」をチャンク分割してレビューした各チャンクの指摘結果です。
+この結果をもとに、指定のMarkdownフォーマットで最終レポートを生成してください。
+
+## 各チャンクの指摘結果
+
+{all_findings}
+
+---
+
+## 出力フォーマット（厳守）
+
+以下のMarkdownフォーマットを**厳密に**守ること。
+
+# PowerPoint レビューレポート
+
+**ファイル**: {filename}
+**レビュー日時**: {today}
+**総スライド数**: {total_slides} 枚（ファイル全体）
+**レビュー対象ページ**: {page_label}
+**対象読者**: 顧客向け
+
+---
+
+## 総合サマリー
+
+（全体を通じた主な課題と優先度が高い改善ポイントを3〜5行で要約。表記ゆれの件数・論理問題の有無・{"固有観点の問題・" if has_perspectives else ""}文体の乱れなど）
+
+---
+
+## カテゴリ別 指摘件数
+
+| カテゴリ | 件数 |
+|---------|------|
+| 📝 表記ゆれ・文章校正 | N件 |
+| 🔗 論理的整合性 | N件 |
+{perspectives_count_row}
+| 👥 文体 | N件 |
+| **合計** | **N件** |
+
+---
+
+## スライド別 指摘事項
+
+（各チャンクの指摘事項をスライド番号順に整理して列挙。指摘がないスライドは省略）
+
+---
+
+## 全体的な改善提案
+
+1. 改善提案1
+2. 改善提案2
+3. 改善提案3
+
+## 出力ルール
+- テキストの引用・転載は禁止
+- カテゴリ別件数は各チャンクの指摘を正確に集計してから記載
+- コードブロック（```）は出力に含めない。Markdownをそのまま出力する
+"""
+
+
+def _run_chunked_review(
+    filename: str,
+    extract_data: dict,
+    terminology_data: dict,
+    selected_perspectives: list[dict] | None,
+    chunk_size: int,
+) -> str:
+    """チャンク分割による並列レビューを実行し、統合レポートを返す。
+
+    chunk_size 以下のスライド数なら従来の一括レビューにフォールバックする。
+    """
+    slides = extract_data.get("slides", [])
+    total_slides = extract_data.get("total_slides", len(slides))
+    reviewed_slides = extract_data.get("reviewed_slides", [s["slide_number"] for s in slides])
+
+    # チャンクサイズ以下なら一括レビュー
+    if len(slides) <= chunk_size:
+        logger.info("スライド数(%d)がチャンクサイズ(%d)以下のため一括レビュー", len(slides), chunk_size)
+        return call_ai_review(
+            build_review_prompt(filename, extract_data, terminology_data, selected_perspectives)
+        )
+
+    # チャンク分割
+    chunks = _split_extract_data(extract_data, chunk_size)
+    total_chunks = len(chunks)
+    logger.info(
+        "チャンク分割レビュー開始: %d枚 → %dチャンク（各%d枚）",
+        len(slides), total_chunks, chunk_size,
+    )
+
+    # 並列にチャンクレビューを実行
+    chunk_results: list[str] = [""] * total_chunks
+
+    def _review_chunk(idx: int, chunk_data: dict) -> tuple[int, str]:
+        logger.info("チャンク %d/%d レビュー中...", idx + 1, total_chunks)
+        prompt = _build_chunk_prompt(
+            filename, chunk_data, terminology_data,
+            selected_perspectives, idx + 1, total_chunks,
+        )
+        result = call_ai_review(prompt)
+        logger.info("チャンク %d/%d 完了", idx + 1, total_chunks)
+        return idx, result
+
+    with ThreadPoolExecutor(max_workers=min(total_chunks, 4)) as executor:
+        futures = {executor.submit(_review_chunk, i, c): i for i, c in enumerate(chunks)}
+        for future in as_completed(futures):
+            idx, result = future.result()  # 401エラー等は RuntimeError として伝播
+            chunk_results[idx] = result
+
+    # 統合レポート生成
+    logger.info("全チャンク完了。統合レポートを生成中...")
+    synthesis_prompt = _build_synthesis_prompt(
+        filename, chunk_results, total_slides, reviewed_slides, selected_perspectives
+    )
+    final_report = call_ai_review(synthesis_prompt)
+    logger.info("統合レポート生成完了")
+    return final_report
 
 
 # ---------------------------------------------------------------------------
@@ -971,20 +1260,11 @@ def review():
         # --- 用語チェック ---
         terminology_data = run_terminology_check(extract_stdout)
 
-        # --- AI でレビュー（AI_PROVIDER に応じて Anthropic / OpenAI を切り替え）---
-        # custom_perspectives.json の全登録用語を「顧客既知用語」として収集
-        all_persp_data = _load_perspectives()
-        known_terms: list[str] = [
-            item["perspective"].strip()
-            for cat in all_persp_data.get("perspectives", [])
-            for item in cat.get("items", [])
-            if item.get("perspective", "").strip()
-        ]
-        prompt = build_review_prompt(
-            file.filename, extract_data, terminology_data, selected_perspectives,
-            known_terms=known_terms if known_terms else None,
+        # --- AI でレビュー（チャンク分割 + 並列実行 + 統合）---
+        report_md = _run_chunked_review(
+            file.filename, extract_data, terminology_data,
+            selected_perspectives, _REVIEW_CHUNK_SIZE,
         )
-        report_md = call_ai_review(prompt)
 
         # --- 空レスポンス・異常コンテンツチェック（多重防御） ---
         if not report_md or not report_md.strip():
