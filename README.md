@@ -355,10 +355,72 @@ http://10.100.100.100:8080
 ## 使い方
 
 1. **ファイルを選択** — 「クリックまたはドラッグ」エリアにPPTXをドロップするか、クリックして選択する
-2. **ページを指定（任意）** — 「対象ページ」に `1,3,5` のように入力すると、指定したページだけをレビュー
+2. **ページを指定（任意）** — 「対象ページ」に以下の形式で入力すると、指定したページだけをレビュー
+   - カンマ区切り: `1,3,5`
+   - チルダ範囲: `1～5` または `1~5`（1〜5ページすべてが対象）
+   - 混在: `1～5,10`（1,2,3,4,5,10 ページが対象）
 3. **「レビュー開始」を押す** — AIが分析中はプログレスメッセージが表示される（1〜2分程度）
 4. **レポートを確認** — 画面にレポートが表示される
 5. **保存** — 「Markdown を保存」ボタンでファイルをダウンロード。`web/uploads/` にも自動保存される
+
+---
+
+---
+
+## OPENAI KEY SETTING 機能
+
+ブラウザから直接 `OPENAI_API_KEY` を設定できる機能です。
+
+### 使い方
+
+1. 画面左上のヘッダーにある **「OPENAI KEY SETTING」** ボタンをクリック
+2. **パスワード**を入力して「次へ」を押す
+3. **OPENAI_API_KEY** を入力して「設定する」を押す
+4. 成功すると `.env` ファイルの `OPENAI_API_KEY` が更新され、サーバー再起動なしで反映される
+
+### パスワードの設定方法
+
+`config.yaml` の `api_key_setting.password` にパスワードを設定してください。
+
+```yaml
+api_key_setting:
+  password: "your_password_here"
+```
+
+> パスワードが空文字列（デフォルト）の場合、この機能は無効になります。
+> セキュリティのため、パスワードには推測されにくい文字列を設定してください。
+
+---
+
+## 設定ファイル一覧
+
+| ファイル | 説明 |
+|---------|------|
+| `.env` | API キー・ポート番号など（`.gitignore` に含まれます） |
+| `config.yaml` | ログ設定・Teams 通知設定・OPENAI KEY SETTING のパスワード |
+
+### `.env` の設定項目
+
+```env
+# OpenAI API キー（OPENAI KEY SETTING から GUI で設定することも可能）
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+
+# Anthropic API キー
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
+
+# サーバーポート（デフォルト: 5000）
+PORT=5000
+```
+
+### `config.yaml` の設定項目
+
+| キー | デフォルト | 説明 |
+|------|-----------|------|
+| `logging.retention_days` | `7` | ログファイルの保持日数 |
+| `logging.log_dir` | `logs` | ログ出力ディレクトリ |
+| `teams.enabled` | `false` | API 認証エラー時の Teams 通知を有効にするか |
+| `teams.webhook_url` | `""` | Teams Incoming Webhook URL |
+| `api_key_setting.password` | `""` | OPENAI KEY SETTING 機能のパスワード（空の場合は機能無効） |
 
 ---
 

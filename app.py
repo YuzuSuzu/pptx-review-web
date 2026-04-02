@@ -321,6 +321,52 @@ def build_review_prompt(
 
 
 # ---------------------------------------------------------------------------
+# ページ指定のユーティリティ
+# ---------------------------------------------------------------------------
+def expand_page_ranges(pages_str: str) -> str:
+    """ページ指定文字列のチルダ範囲表記を展開してカンマ区切り文字列に変換する。
+
+    例:
+      "1～5,10" → "1,2,3,4,5,10"
+      "3~5,11"  → "3,4,5,11"
+      "1,3,5"   → "1,3,5"（変更なし）
+    """
+    result: list[int] = []
+    seen: set[int] = set()
+    for token in pages_str.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        token_normalized = token.replace("～", "~")
+        if "~" in token_normalized:
+            parts = token_normalized.split("~", 1)
+            try:
+                start = int(parts[0].strip())
+                end = int(parts[1].strip())
+                if start < 1 or end < 1 or start > end:
+                    logger.warning("無効なページ範囲のため無視: %s", token)
+                    continue
+                for n in range(start, end + 1):
+                    if n not in seen:
+                        result.append(n)
+                        seen.add(n)
+            except ValueError:
+                logger.warning("ページ範囲のパースに失敗したため無視: %s", token)
+        else:
+            try:
+                n = int(token)
+                if n < 1:
+                    logger.warning("ページ番号は1以上で指定してください（無視: %s）", token)
+                    continue
+                if n not in seen:
+                    result.append(n)
+                    seen.add(n)
+            except ValueError:
+                logger.warning("無効なページ番号のため無視: %s", token)
+    return ",".join(str(n) for n in result)
+
+
+# ---------------------------------------------------------------------------
 # スクリプト実行ヘルパー
 # ---------------------------------------------------------------------------
 def run_extract(pptx_path: str, pages: str | None) -> dict:
@@ -889,7 +935,9 @@ def review():
     if not file.filename or not file.filename.lower().endswith(".pptx"):
         return jsonify({"error": ".pptx ファイルのみ対応しています。"}), 400
 
-    pages = request.form.get("pages", "").strip() or None
+    pages_raw = request.form.get("pages", "").strip()
+    # チルダ範囲（1～5,10 や 3~5,11）をカンマ区切りに展開
+    pages = expand_page_ranges(pages_raw) if pages_raw else None
 
     # --- 固有観点（JSON文字列で受信） ---
     selected_perspectives = None
@@ -938,10 +986,21 @@ def review():
         )
         report_md = call_ai_review(prompt)
 
-        # --- 空レスポンスチェック（二重防御） ---
+        # --- 空レスポンス・異常コンテンツチェック（多重防御） ---
         if not report_md or not report_md.strip():
             logger.error("AIレビュー結果が空です。レポートの生成に失敗しました。")
             return jsonify({"error": "AIレビュー結果が空です。再度お試しください。"}), 500
+        if len(report_md.strip()) < 50:
+            logger.error(
+                "AIレビュー結果が短すぎます（%d文字）。正常なレポートが生成されていない可能性があります。",
+                len(report_md.strip()),
+            )
+            return jsonify({"error": "AIレビュー結果が不正です（内容が短すぎます）。再度お試しください。"}), 500
+        if "# PowerPoint レビューレポート" not in report_md:
+            logger.warning(
+                "AIレビュー結果に期待するヘッダーが含まれていません。内容を確認してください（length=%d）",
+                len(report_md),
+            )
 
         # --- ダウンロード用ファイル名を生成（実ファイル保存なし・クライアント側でBlob生成）---
         stem = Path(file.filename).stem
@@ -967,6 +1026,72 @@ def review():
     finally:
         # ディレクトリごと削除（一時ファイルも含む）。ignore_errors=True でスレッドセーフ
         shutil.rmtree(request_dir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# OPENAI API キー設定エンドポイント
+# ---------------------------------------------------------------------------
+_env_file_lock = threading.Lock()
+
+
+@app.route("/api/openai-key", methods=["POST"])
+def set_openai_key():
+    """OPENAI_API_KEY を .env ファイルに保存する。
+
+    パスワード保護: config.yaml の api_key_setting.password と一致した場合のみ許可。
+    パスワード未設定（空文字列）の場合は機能無効。
+    """
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"error": "リクエストボディが不正です。"}), 400
+
+    password_input = body.get("password", "")
+    api_key_input = body.get("api_key", "").strip()
+
+    # パスワード検証
+    cfg_password = _config.get("api_key_setting", {}).get("password", "").strip()
+    if not cfg_password:
+        return jsonify({"error": "API キー設定機能が無効です。config.yaml で password を設定してください。"}), 403
+    if password_input != cfg_password:
+        logger.warning("OPENAI KEY SETTING: パスワード不一致")
+        return jsonify({"error": "パスワードが正しくありません。"}), 403
+
+    # パスワードのみ検証（verify_only=true の場合はここで返す）
+    if body.get("verify_only"):
+        return jsonify({"ok": True, "message": "パスワードが確認されました。"})
+
+    # APIキーのバリデーション
+    if not api_key_input:
+        return jsonify({"error": "API キーが空です。"}), 400
+
+    # .env ファイルの OPENAI_API_KEY を更新（または追加）
+    env_path = BASE_DIR / ".env"
+    with _env_file_lock:
+        if env_path.exists():
+            lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        else:
+            lines = []
+
+        updated = False
+        new_lines: list[str] = []
+        for line in lines:
+            # コメント行・空行・OPENAI_API_KEY 以外の行はそのまま保持
+            stripped = line.strip()
+            if stripped.startswith("OPENAI_API_KEY"):
+                new_lines.append(f"OPENAI_API_KEY={api_key_input}\n")
+                updated = True
+            else:
+                new_lines.append(line)
+
+        if not updated:
+            new_lines.append(f"OPENAI_API_KEY={api_key_input}\n")
+
+        env_path.write_text("".join(new_lines), encoding="utf-8")
+
+    # 実行中プロセスの環境変数も即時反映（再起動不要）
+    os.environ["OPENAI_API_KEY"] = api_key_input
+    logger.info("OPENAI_API_KEY を更新しました（キー末尾: ...%s）", api_key_input[-4:] if len(api_key_input) >= 4 else "****")
+    return jsonify({"ok": True, "message": "OPENAI_API_KEY を更新しました。"})
 
 
 # ---------------------------------------------------------------------------
