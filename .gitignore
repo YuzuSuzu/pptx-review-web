@@ -7,3 +7,4 @@ uploads/
 test-results/
 *.pptx
 *.log
+logs/

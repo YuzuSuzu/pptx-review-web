@@ -27,7 +27,7 @@ import pytest
 # web/ フォルダを sys.path に追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import app as flask_app_module
-from app import app, run_extract, run_terminology_check, SKILL_DIR
+from app import app, run_extract, run_terminology_check, SKILL_DIR, PERSPECTIVES_PATH
 
 # -----------------------------------------------------------------
 # 固定レスポンス（AI モック用）
@@ -225,6 +225,55 @@ class TestReviewFullFlow:
                 res = client.post("/review", data=data, content_type="multipart/form-data")
         body = json.loads(res.data)
         assert body["reviewed_slides"] == [1, 3]
+
+
+# -----------------------------------------------------------------
+# 4b. /review 空レスポンスハンドリング
+# -----------------------------------------------------------------
+class TestReviewEmptyResponse:
+    """AI が空レスポンスを返した場合のエラーハンドリングを確認。"""
+
+    def test_empty_string_returns_500(self, client, pptx_path):
+        """AI が空文字列を返した場合に 500 エラーが返ることを確認。"""
+        with patch("app.call_ai_review", return_value=""):
+            with open(pptx_path, "rb") as f:
+                data = {"pptx_file": (f, "test.pptx")}
+                res = client.post("/review", data=data, content_type="multipart/form-data")
+        assert res.status_code == 500
+        body = json.loads(res.data)
+        assert "error" in body
+
+    def test_whitespace_only_returns_500(self, client, pptx_path):
+        """AI がホワイトスペースのみを返した場合に 500 エラーが返ることを確認。"""
+        with patch("app.call_ai_review", return_value="   \n\t  "):
+            with open(pptx_path, "rb") as f:
+                data = {"pptx_file": (f, "test.pptx")}
+                res = client.post("/review", data=data, content_type="multipart/form-data")
+        assert res.status_code == 500
+        body = json.loads(res.data)
+        assert "error" in body
+
+    def test_none_returns_500(self, client, pptx_path):
+        """AI が None を返した場合に 500 エラーが返ることを確認。"""
+        with patch("app.call_ai_review", return_value=None):
+            with open(pptx_path, "rb") as f:
+                data = {"pptx_file": (f, "test.pptx")}
+                res = client.post("/review", data=data, content_type="multipart/form-data")
+        assert res.status_code == 500
+        body = json.loads(res.data)
+        assert "error" in body
+
+    def test_empty_response_no_file_created(self, client, pptx_path):
+        """空レスポンス時に 0KB のレポートファイルが作成されないことを確認。"""
+        import glob
+        before = set(glob.glob(str(flask_app_module.UPLOAD_DIR / "*.md")))
+        with patch("app.call_ai_review", return_value=""):
+            with open(pptx_path, "rb") as f:
+                data = {"pptx_file": (f, "test.pptx")}
+                client.post("/review", data=data, content_type="multipart/form-data")
+        after = set(glob.glob(str(flask_app_module.UPLOAD_DIR / "*.md")))
+        new_files = after - before
+        assert len(new_files) == 0, f"空レスポンスなのにファイルが作成されました: {new_files}"
 
 
 # -----------------------------------------------------------------
@@ -613,3 +662,192 @@ class TestTerminologyDetection:
             # 必ず元に戻す
             with open(terminology_path, "w", encoding="utf-8") as f:
                 json.dump(original, f, ensure_ascii=False, indent=2)
+
+
+# -----------------------------------------------------------------
+# 9. 固有観点 API テスト
+# -----------------------------------------------------------------
+class TestPerspectivesAPI:
+    def test_get_returns_200(self, client):
+        res = client.get("/api/perspectives")
+        assert res.status_code == 200
+
+    def test_get_returns_perspectives_list(self, client):
+        res = client.get("/api/perspectives")
+        data = json.loads(res.data)
+        assert "perspectives" in data
+        assert isinstance(data["perspectives"], list)
+
+    def test_get_has_initial_data(self, client):
+        """初期データにカテゴリと観点が含まれることを確認。"""
+        res = client.get("/api/perspectives")
+        data = json.loads(res.data)
+        assert len(data["perspectives"]) >= 1
+        cat = data["perspectives"][0]
+        assert "category" in cat
+        assert "items" in cat
+        assert len(cat["items"]) >= 1
+        assert "perspective" in cat["items"][0]
+
+    def test_post_save_perspectives(self, client):
+        """固有観点の保存が成功することを確認。"""
+        # 元データを保持
+        original = json.loads(client.get("/api/perspectives").data)
+
+        new_data = {
+            "perspectives": [
+                {
+                    "category": "テスト用カテゴリ",
+                    "items": [
+                        {"perspective": "テスト観点A", "notes": "備考A"},
+                        {"perspective": "テスト観点B", "notes": ""},
+                    ],
+                }
+            ]
+        }
+        res = client.post(
+            "/api/perspectives",
+            data=json.dumps(new_data),
+            content_type="application/json",
+        )
+        assert res.status_code == 200
+        body = json.loads(res.data)
+        assert body["ok"] is True
+        assert body["category_count"] == 1
+        assert body["item_count"] == 2
+
+        # 保存されたか確認
+        res2 = client.get("/api/perspectives")
+        saved = json.loads(res2.data)
+        assert len(saved["perspectives"]) == 1
+        assert saved["perspectives"][0]["category"] == "テスト用カテゴリ"
+
+        # 元に戻す
+        client.post(
+            "/api/perspectives",
+            data=json.dumps({"perspectives": original["perspectives"]}),
+            content_type="application/json",
+        )
+
+    def test_post_empty_category_returns_400(self, client):
+        """カテゴリ名が空の場合に 400 を返すことを確認。"""
+        res = client.post(
+            "/api/perspectives",
+            data=json.dumps({"perspectives": [{"category": "", "items": []}]}),
+            content_type="application/json",
+        )
+        assert res.status_code == 400
+
+    def test_post_empty_perspective_returns_400(self, client):
+        """観点名が空の場合に 400 を返すことを確認。"""
+        res = client.post(
+            "/api/perspectives",
+            data=json.dumps({
+                "perspectives": [{
+                    "category": "テスト",
+                    "items": [{"perspective": "", "notes": ""}],
+                }]
+            }),
+            content_type="application/json",
+        )
+        assert res.status_code == 400
+
+    def test_post_no_perspectives_field_returns_400(self, client):
+        """perspectives フィールドなしで 400 を返すことを確認。"""
+        res = client.post(
+            "/api/perspectives",
+            data=json.dumps({"data": []}),
+            content_type="application/json",
+        )
+        assert res.status_code == 400
+
+
+# -----------------------------------------------------------------
+# 10. 固有観点ロックテスト
+# -----------------------------------------------------------------
+class TestPerspectivesLock:
+    @staticmethod
+    def _release_all(client):
+        import app as m
+        with m._persp_lock_mutex:
+            m._persp_lock_state["token"] = None
+            m._persp_lock_state["locked_at"] = None
+
+    def test_get_lock_initially_unlocked(self, client):
+        self._release_all(client)
+        res = client.get('/api/perspectives/lock')
+        assert json.loads(res.data)['locked'] is False
+
+    def test_acquire_lock_success(self, client):
+        self._release_all(client)
+        res = client.post('/api/perspectives/lock')
+        data = json.loads(res.data)
+        assert data['ok'] is True
+        assert 'token' in data
+        self._release_all(client)
+
+    def test_acquire_lock_twice_fails(self, client):
+        self._release_all(client)
+        client.post('/api/perspectives/lock')
+        res2 = client.post('/api/perspectives/lock')
+        assert res2.status_code == 409
+        self._release_all(client)
+
+    def test_release_lock_with_valid_token(self, client):
+        self._release_all(client)
+        res1 = client.post('/api/perspectives/lock')
+        token = json.loads(res1.data)['token']
+        res2 = client.delete('/api/perspectives/lock',
+                             data=json.dumps({'token': token}),
+                             content_type='application/json')
+        assert json.loads(res2.data)['ok'] is True
+        self._release_all(client)
+
+
+# -----------------------------------------------------------------
+# 11. レビューと固有観点の統合テスト
+# -----------------------------------------------------------------
+class TestReviewWithPerspectives:
+    def test_review_with_custom_perspectives(self, client, pptx_path):
+        """固有観点付きレビューが正常に完了することを確認。"""
+        perspectives = [
+            {"category": "デザイン", "items": [{"perspective": "フォントの統一", "notes": "テスト"}]}
+        ]
+        with patch("app.call_ai_review", return_value=MOCK_REPORT) as mock_ai:
+            with open(pptx_path, "rb") as f:
+                data = {
+                    "pptx_file": (f, "test.pptx"),
+                    "custom_perspectives": json.dumps(perspectives),
+                }
+                res = client.post("/review", data=data, content_type="multipart/form-data")
+        assert res.status_code == 200
+        body = json.loads(res.data)
+        assert "report" in body
+
+        # プロンプトに固有観点が含まれることを確認
+        called_prompt = mock_ai.call_args[0][0]
+        assert "固有観点" in called_prompt
+        assert "デザイン" in called_prompt
+        assert "フォントの統一" in called_prompt
+
+        # クリーンアップ
+        saved = flask_app_module.UPLOAD_DIR / body["report_filename"]
+        if saved.exists():
+            saved.unlink()
+
+    def test_review_without_perspectives(self, client, pptx_path):
+        """固有観点なしでもレビューが正常に完了することを確認。"""
+        with patch("app.call_ai_review", return_value=MOCK_REPORT) as mock_ai:
+            with open(pptx_path, "rb") as f:
+                data = {"pptx_file": (f, "test.pptx")}
+                res = client.post("/review", data=data, content_type="multipart/form-data")
+        assert res.status_code == 200
+
+        # 固有観点なしの場合、プロンプトに「固有観点」は含まれない
+        called_prompt = mock_ai.call_args[0][0]
+        assert "固有観点" not in called_prompt
+
+        body = json.loads(res.data)
+        saved = flask_app_module.UPLOAD_DIR / body["report_filename"]
+        if saved.exists():
+            saved.unlink()
