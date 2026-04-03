@@ -17,6 +17,7 @@ LiteLLM Proxy など互換エンドポイントの場合:
   cd web
   python app.py
 """
+import csv
 import io
 import json
 import logging
@@ -30,7 +31,7 @@ import tempfile
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import anthropic
@@ -639,10 +640,9 @@ _TEST_MODE_RESPONSE = """\
 
 | カテゴリ | 件数 |
 |---------|------|
-| 📝 | 3件 |
-| 🔗 | 1件 |
-| 📊 | 1件 |
-| 👥 | 2件 |
+| 📝 表記ゆれ・文章校正 | 3件 |
+| 🔗 論理的整合性 | 2件 |
+| 👥 文体 | 2件 |
 | **合計** | **7件** |
 
 ---
@@ -662,7 +662,7 @@ _TEST_MODE_RESPONSE = """\
 |---------|---------|---------|
 | 📝 | 用語統一リスト（正: インタフェース）と異なる表記が使用されている | テキストボックス「インターフェース設計」→「インターフェース」 |
 | 🔗 | 主語「課題は」に対して述語「改善します」が意味的にねじれている | テキストボックス「課題は改善します」→「課題は」 |
-| 📊 | 文字数約612文字。1スライドの情報量として過多 | テキストボックス（全体・612文字） |
+| 🔗 | 文字数約612文字。1スライドの情報量として過多 | テキストボックス（全体・612文字） |
 
 ### スライド 5：まとめ
 
@@ -950,7 +950,9 @@ def _run_chunked_review(
 # ---------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html")
+    provider = detect_provider()
+    provider_display = {"anthropic": "Claude", "openai": "OpenAI"}.get(provider, provider)
+    return render_template("index.html", provider_display=provider_display)
 
 
 @app.route("/debug")
@@ -1441,6 +1443,60 @@ def set_openai_key():
     os.environ["OPENAI_API_KEY"] = api_key_input
     logger.info("OPENAI_API_KEY を更新しました（キー末尾: ...%s）", api_key_input[-4:] if len(api_key_input) >= 4 else "****")
     return jsonify({"ok": True, "message": "OPENAI_API_KEY を更新しました。"})
+
+
+def _sanitize_csv_value(value: str) -> str:
+    """CSV injection 対策: Excel が数式として解釈しうるプレフィックスを無害化する。"""
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
+_feedback_lock = threading.Lock()
+
+
+@app.route("/api/feedback", methods=["POST"])
+def api_feedback():
+    """改善要望を受け取り、CSVファイルに追記する。"""
+    body = request.get_json(silent=True) or {}
+    content = (body.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "改善要望を入力してください。"}), 400
+
+    name = (body.get("name") or "").strip()
+    department = (body.get("department") or "").strip()
+
+    if len(name) > 100:
+        return jsonify({"error": "名前は100文字以内で入力してください。"}), 400
+    if len(department) > 100:
+        return jsonify({"error": "所属は100文字以内で入力してください。"}), 400
+    if len(content) > 5000:
+        return jsonify({"error": "改善要望は5000文字以内で入力してください。"}), 400
+
+    now = datetime.datetime.now().strftime("%Y/%m/%d %H:%M")
+    feedback_dir = BASE_DIR / "feedback"
+    feedback_dir.mkdir(exist_ok=True)
+    feedback_csv = feedback_dir / "feedback.csv"
+
+    try:
+        with _feedback_lock:
+            write_header = not feedback_csv.exists()
+            with feedback_csv.open("a", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                if write_header:
+                    writer.writerow(["登録日時", "名前", "所属", "改善要望"])
+                writer.writerow([
+                    now,
+                    _sanitize_csv_value(name),
+                    _sanitize_csv_value(department),
+                    _sanitize_csv_value(content),
+                ])
+    except OSError as e:
+        logger.error("フィードバック CSV 書き込みエラー: %s", e)
+        return jsonify({"error": "フィードバックの保存に失敗しました。"}), 500
+
+    logger.info("改善要望を受け付けました: name=%s, dept=%s", name, department)
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------

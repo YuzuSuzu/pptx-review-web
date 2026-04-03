@@ -53,8 +53,7 @@ MOCK_REPORT = """# PowerPoint レビューレポート
 | カテゴリ | 件数 |
 |---------|------|
 | 📝 表記ゆれ・文章校正 | 3件 |
-| 🔗 論理的整合性 | 0件 |
-| 📊 構成・可読性 | 1件 |
+| 🔗 論理的整合性 | 1件 |
 | 👥 専門用語・顧客表現 | 2件 |
 | **合計** | **6件** |
 
@@ -851,3 +850,63 @@ class TestReviewWithPerspectives:
         saved = flask_app_module.UPLOAD_DIR / body["report_filename"]
         if saved.exists():
             saved.unlink()
+
+
+# -----------------------------------------------------------------
+# 7. /api/feedback
+# -----------------------------------------------------------------
+class TestFeedbackEndpoint:
+    def test_feedback_success(self, client, tmp_path):
+        """正常系: フィードバックがCSVに保存される。"""
+        with patch.object(flask_app_module, "BASE_DIR", tmp_path):
+            res = client.post("/api/feedback", json={
+                "name": "テスト太郎",
+                "department": "開発部",
+                "content": "テストフィードバックです",
+            })
+        assert res.status_code == 200
+        data = json.loads(res.data)
+        assert data["ok"] is True
+
+    def test_feedback_empty_content_400(self, client):
+        """content が空の場合は 400 を返す。"""
+        res = client.post("/api/feedback", json={"content": ""})
+        assert res.status_code == 400
+        data = json.loads(res.data)
+        assert "error" in data
+
+    def test_feedback_name_too_long_400(self, client):
+        """name が 101 文字の場合は 400 を返す。"""
+        res = client.post("/api/feedback", json={
+            "name": "a" * 101,
+            "content": "valid content",
+        })
+        assert res.status_code == 400
+
+    def test_feedback_department_too_long_400(self, client):
+        """department が 101 文字の場合は 400 を返す。"""
+        res = client.post("/api/feedback", json={
+            "department": "a" * 101,
+            "content": "valid content",
+        })
+        assert res.status_code == 400
+
+    def test_feedback_content_too_long_400(self, client):
+        """content が 5001 文字の場合は 400 を返す。"""
+        res = client.post("/api/feedback", json={
+            "content": "a" * 5001,
+        })
+        assert res.status_code == 400
+
+    def test_feedback_csv_injection_sanitized(self, client, tmp_path):
+        """CSV injection 対策: 危険プレフィックスが ' で無害化される。"""
+        with patch.object(flask_app_module, "BASE_DIR", tmp_path):
+            client.post("/api/feedback", json={
+                "name": "=cmd|'/C calc'!A0",
+                "department": "+SUM(A1:A10)",
+                "content": "normal content",
+            })
+            csv_path = tmp_path / "feedback" / "feedback.csv"
+            text = csv_path.read_text(encoding="utf-8-sig")
+        assert "'=cmd" in text
+        assert "'+SUM" in text
