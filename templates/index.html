@@ -304,7 +304,7 @@
     .btn-feedback-open {
       margin-left: auto;
       padding: 7px 16px;
-      background: #0d9488;
+      background: #059669;
       color: #fff;
       border: none;
       border-radius: 6px;
@@ -315,7 +315,7 @@
       transition: background .15s;
       white-space: nowrap;
     }
-    .btn-feedback-open:hover { background: #0f766e; }
+    .btn-feedback-open:hover { background: #047857; }
 
     /* ==== OPENAI KEY SETTING ボタン ==== */
     .btn-api-setting {
@@ -357,7 +357,7 @@
 <header>
   <div>📊</div>
   <h1>PPTX レビュアー</h1>
-  <span class="badge">Codex</span>
+  <span class="badge">{{ provider_display }}</span>
   <button class="btn-feedback-open" id="feedback-btn">改善要望</button>
   <button class="btn-api-setting" id="api-key-setting-btn">OPENAI KEY SETTING</button>
 </header>
@@ -533,11 +533,11 @@
     <div class="modal-body">
       <div id="feedback-alert" class="modal-alert"></div>
       <label class="modal-label" for="feedback-name">名前</label>
-      <input type="text" class="modal-input" id="feedback-name" placeholder="例：山田 太郎" autocomplete="name" />
+      <input type="text" class="modal-input" id="feedback-name" placeholder="例：山田 太郎" autocomplete="name" maxlength="100" />
       <label class="modal-label" for="feedback-dept">所属</label>
-      <input type="text" class="modal-input" id="feedback-dept" placeholder="例：システム部" />
+      <input type="text" class="modal-input" id="feedback-dept" placeholder="例：システム部" maxlength="100" />
       <label class="modal-label" for="feedback-content">改善要望など <span style="color:#ef4444;">*</span></label>
-      <textarea class="modal-input" id="feedback-content" rows="5" placeholder="ご意見・ご要望をご記入ください" style="resize:vertical;"></textarea>
+      <textarea class="modal-input" id="feedback-content" rows="5" placeholder="ご意見・ご要望をご記入ください" style="resize:vertical;" maxlength="5000"></textarea>
     </div>
     <div class="modal-footer">
       <button class="btn-icon btn-cancel" id="feedback-modal-cancel">キャンセル</button>
@@ -749,7 +749,7 @@ async function executeReview() {
   const steps = [
     [1000,  'テキストを抽出中...'],
     [3000,  '用語チェック中...'],
-    [5000,  'Codex がレビュー分析中...（しばらくお待ちください）'],
+    [5000,  '{{ provider_display }} がレビュー分析中...（しばらくお待ちください）'],
     [20000, 'レポートを生成中...'],
   ];
   const timers = steps.map(([d, m]) => setTimeout(() => { if (progressEl.style.display !== 'none') progressMsg.textContent = m; }, d));
