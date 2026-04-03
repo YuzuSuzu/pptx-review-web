@@ -5,6 +5,7 @@ __pycache__/
 .env
 uploads/
 test-results/
+feedback/
 *.pptx
 *.log
 logs/
